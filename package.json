@@ -1,0 +1,194 @@
+{
+  "name": "agent-workspace",
+  "displayName": "Agent Workspace",
+  "description": "Manage multiple CLI coding agents in a VS Code workspace.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:agentWorkspace.agents"
+  ],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist/**",
+    "media/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "compile": "npm run check-types && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "tsx --test test/**/*.test.ts",
+    "package": "npm run lint && npm test && npm run compile && vsce package --no-dependencies --allow-missing-repository",
+    "vscode:prepublish": "npm run compile"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentWorkspace",
+          "title": "Agent Workspace",
+          "icon": "media/agent-workspace.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentWorkspace": [
+        {
+          "id": "agentWorkspace.agents",
+          "name": "Agents",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "agentWorkspace.agents",
+        "contents": "No agents configured.\n[Create your first agent](command:agentWorkspace.createAgent)",
+        "when": "!agentWorkspace.hasAgents"
+      }
+    ],
+    "commands": [
+      {
+        "command": "agentWorkspace.createAgent",
+        "title": "Create Agent",
+        "category": "Agent Workspace",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentWorkspace.refresh",
+        "title": "Refresh",
+        "category": "Agent Workspace",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentWorkspace.toggleAgent",
+        "title": "Start or Focus Agent",
+        "category": "Agent Workspace"
+      },
+      {
+        "command": "agentWorkspace.startAgent",
+        "title": "Start",
+        "category": "Agent Workspace",
+        "icon": "$(play)"
+      },
+      {
+        "command": "agentWorkspace.stopAgent",
+        "title": "Stop",
+        "category": "Agent Workspace",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "agentWorkspace.restartAgent",
+        "title": "Restart",
+        "category": "Agent Workspace",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "agentWorkspace.openInstructions",
+        "title": "Open Instructions",
+        "category": "Agent Workspace",
+        "icon": "$(file-text)"
+      },
+      {
+        "command": "agentWorkspace.editAgent",
+        "title": "Edit Agent",
+        "category": "Agent Workspace",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "agentWorkspace.deleteAgent",
+        "title": "Delete Agent",
+        "category": "Agent Workspace",
+        "icon": "$(trash)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentWorkspace.createAgent",
+          "when": "view == agentWorkspace.agents",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentWorkspace.refresh",
+          "when": "view == agentWorkspace.agents",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agentWorkspace.startAgent",
+          "when": "view == agentWorkspace.agents && viewItem == agentStopped",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentWorkspace.stopAgent",
+          "when": "view == agentWorkspace.agents && viewItem == agentRunning",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentWorkspace.restartAgent",
+          "when": "view == agentWorkspace.agents && viewItem == agentRunning",
+          "group": "inline@2"
+        },
+        {
+          "command": "agentWorkspace.openInstructions",
+          "when": "view == agentWorkspace.agents",
+          "group": "inline@3"
+        },
+        {
+          "command": "agentWorkspace.startAgent",
+          "when": "view == agentWorkspace.agents && viewItem == agentStopped",
+          "group": "1_manage@1"
+        },
+        {
+          "command": "agentWorkspace.stopAgent",
+          "when": "view == agentWorkspace.agents && viewItem == agentRunning",
+          "group": "1_manage@2"
+        },
+        {
+          "command": "agentWorkspace.restartAgent",
+          "when": "view == agentWorkspace.agents",
+          "group": "1_manage@3"
+        },
+        {
+          "command": "agentWorkspace.openInstructions",
+          "when": "view == agentWorkspace.agents",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "agentWorkspace.editAgent",
+          "when": "view == agentWorkspace.agents",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "agentWorkspace.deleteAgent",
+          "when": "view == agentWorkspace.agents",
+          "group": "3_delete@1"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
