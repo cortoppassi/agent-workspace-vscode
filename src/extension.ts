@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AgentManager } from './agents/AgentManager';
+import { ChatSessionManager } from './chat/ChatSessionManager';
 import { registerCommands } from './commands/registerCommands';
 import { ConfigManager } from './config/ConfigManager';
 import { UserFacingError } from './config/validation';
@@ -7,6 +8,7 @@ import { WorkspaceResolver } from './config/WorkspaceResolver';
 import { ProviderRegistry } from './providers/ProviderRegistry';
 import { TerminalManager } from './terminal/TerminalManager';
 import { AgentTreeProvider } from './views/AgentTreeProvider';
+import { ChatWebviewProvider, EmptyChatWebviewProvider } from './views/ChatWebviewProvider';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Agent Workspace', { log: true });
@@ -22,18 +24,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const agents = new AgentManager(configManager);
   const providers = new ProviderRegistry();
   const terminals = new TerminalManager(providers);
-  const treeProvider = new AgentTreeProvider(agents, terminals, providers);
+  const chats = new ChatSessionManager(agents, context.workspaceState, output);
+  const treeProvider = new AgentTreeProvider(agents, terminals, providers, chats);
+  const chatView = new ChatWebviewProvider(agents, chats);
 
   context.subscriptions.push(
     agents,
     terminals,
+    chats,
     treeProvider,
+    chatView,
+    vscode.window.registerWebviewViewProvider(ChatWebviewProvider.viewType, chatView, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
     vscode.window.createTreeView('agentWorkspace.agents', {
       treeDataProvider: treeProvider,
       showCollapseAll: false,
     }),
   );
-  registerCommands(context, { agents, terminals, providers, output });
+  registerCommands(context, { agents, terminals, providers, chats, chatView, output });
 
   try {
     await agents.reload();
@@ -60,12 +69,17 @@ async function registerWithoutWorkspace(context: vscode.ExtensionContext): Promi
         getChildren: () => [],
       },
     }),
+    vscode.window.registerWebviewViewProvider(ChatWebviewProvider.viewType, new EmptyChatWebviewProvider()),
   );
   await vscode.commands.executeCommand('setContext', 'agentWorkspace.hasAgents', false);
   const commandIds = [
     'agentWorkspace.createAgent',
     'agentWorkspace.refresh',
-    'agentWorkspace.toggleAgent',
+    'agentWorkspace.openChat',
+    'agentWorkspace.newConversation',
+    'agentWorkspace.openConversation',
+    'agentWorkspace.renameConversation',
+    'agentWorkspace.deleteConversation',
     'agentWorkspace.startAgent',
     'agentWorkspace.stopAgent',
     'agentWorkspace.restartAgent',

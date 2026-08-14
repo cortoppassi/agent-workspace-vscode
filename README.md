@@ -1,6 +1,6 @@
 # Agent Workspace
 
-Agent Workspace is a small VS Code extension for creating and managing multiple CLI coding agents in one project. Each agent has its own instructions file, working directory, terminal, and persisted project configuration.
+Agent Workspace is a small VS Code extension for creating and managing multiple CLI coding agents in one project. Each agent has its own instructions file, working directory, chat or terminal session, and persisted project configuration.
 
 The MVP supports the local Codex CLI and a generic Custom CLI escape hatch. It runs entirely on the developer's machine and does not include telemetry, authentication, cloud services, or an OpenAI API integration.
 
@@ -23,9 +23,12 @@ In the Extension Development Host, open the project where agents should be confi
 2. Select **Create Agent**.
 3. Enter `Backend`, choose `Codex`, and use `.` as the working directory.
 4. Edit the newly opened `.agent-workspace/agents/backend.md` file.
-5. Click the agent to start it. A terminal named `Backend` runs the local `codex` executable.
-6. Create more agents and verify that each has independent instructions, terminal, and status.
-7. Use the item actions or context menu to focus, stop, restart, edit, open instructions, or delete an agent.
+5. Click the agent to open its current embedded conversation and send a message.
+6. Expand the agent and select **New Conversation** to start another independent conversation.
+7. Select a conversation from the list to reopen its history; use its context menu to rename or remove it.
+8. Verify that each conversation shows its own token usage and that the agent shows their combined usage.
+9. Use **Start** from the agent actions or context menu when you want an interactive terminal named `Backend`.
+10. Create more agents and verify that each has independent instructions, conversations, terminal, and status.
 
 The extension assumes `codex` is installed, authenticated, and available on `PATH`.
 

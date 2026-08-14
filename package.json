@@ -12,7 +12,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:agentWorkspace.agents"
+    "onView:agentWorkspace.agents",
+    "onView:agentWorkspace.chat"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -47,6 +48,13 @@
           "id": "agentWorkspace.agents",
           "name": "Agents",
           "icon": "$(hubot)"
+        },
+        {
+          "id": "agentWorkspace.chat",
+          "name": "Chat",
+          "type": "webview",
+          "icon": "$(comment-discussion)",
+          "visibility": "visible"
         }
       ]
     },
@@ -71,9 +79,32 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "agentWorkspace.toggleAgent",
-        "title": "Start or Focus Agent",
+        "command": "agentWorkspace.openChat",
+        "title": "Open Chat",
         "category": "Agent Workspace"
+      },
+      {
+        "command": "agentWorkspace.newConversation",
+        "title": "New Conversation",
+        "category": "Agent Workspace",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentWorkspace.openConversation",
+        "title": "Open Conversation",
+        "category": "Agent Workspace"
+      },
+      {
+        "command": "agentWorkspace.renameConversation",
+        "title": "Rename Conversation",
+        "category": "Agent Workspace",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "agentWorkspace.deleteConversation",
+        "title": "Remove Conversation",
+        "category": "Agent Workspace",
+        "icon": "$(trash)"
       },
       {
         "command": "agentWorkspace.startAgent",
@@ -128,52 +159,62 @@
       "view/item/context": [
         {
           "command": "agentWorkspace.startAgent",
-          "when": "view == agentWorkspace.agents && viewItem == agentStopped",
+          "when": "view == agentWorkspace.agents && viewItem =~ /AgentStopped$/",
           "group": "inline@1"
         },
         {
           "command": "agentWorkspace.stopAgent",
-          "when": "view == agentWorkspace.agents && viewItem == agentRunning",
+          "when": "view == agentWorkspace.agents && viewItem =~ /AgentRunning$/",
           "group": "inline@1"
         },
         {
-          "command": "agentWorkspace.restartAgent",
-          "when": "view == agentWorkspace.agents && viewItem == agentRunning",
+          "command": "agentWorkspace.newConversation",
+          "when": "view == agentWorkspace.agents && viewItem =~ /^codexAgent/",
           "group": "inline@2"
         },
         {
-          "command": "agentWorkspace.openInstructions",
-          "when": "view == agentWorkspace.agents",
-          "group": "inline@3"
-        },
-        {
           "command": "agentWorkspace.startAgent",
-          "when": "view == agentWorkspace.agents && viewItem == agentStopped",
+          "when": "view == agentWorkspace.agents && viewItem =~ /AgentStopped$/",
           "group": "1_manage@1"
         },
         {
           "command": "agentWorkspace.stopAgent",
-          "when": "view == agentWorkspace.agents && viewItem == agentRunning",
+          "when": "view == agentWorkspace.agents && viewItem =~ /AgentRunning$/",
           "group": "1_manage@2"
         },
         {
           "command": "agentWorkspace.restartAgent",
-          "when": "view == agentWorkspace.agents",
+          "when": "view == agentWorkspace.agents && viewItem =~ /Agent/",
           "group": "1_manage@3"
         },
         {
+          "command": "agentWorkspace.newConversation",
+          "when": "view == agentWorkspace.agents && viewItem =~ /^codexAgent/",
+          "group": "1_manage@4"
+        },
+        {
           "command": "agentWorkspace.openInstructions",
-          "when": "view == agentWorkspace.agents",
+          "when": "view == agentWorkspace.agents && viewItem =~ /Agent/",
           "group": "2_edit@1"
         },
         {
           "command": "agentWorkspace.editAgent",
-          "when": "view == agentWorkspace.agents",
+          "when": "view == agentWorkspace.agents && viewItem =~ /Agent/",
           "group": "2_edit@2"
         },
         {
           "command": "agentWorkspace.deleteAgent",
-          "when": "view == agentWorkspace.agents",
+          "when": "view == agentWorkspace.agents && viewItem =~ /Agent/",
+          "group": "3_delete@1"
+        },
+        {
+          "command": "agentWorkspace.renameConversation",
+          "when": "view == agentWorkspace.agents && viewItem == conversation",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "agentWorkspace.deleteConversation",
+          "when": "view == agentWorkspace.agents && viewItem == conversation",
           "group": "3_delete@1"
         }
       ]
