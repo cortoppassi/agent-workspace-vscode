@@ -1,20 +1,25 @@
 import * as vscode from 'vscode';
 import type { AgentManager } from '../agents/AgentManager';
+import type { ChatSessionManager } from '../chat/ChatSessionManager';
 import type { AgentConfig, AgentDraft, ProviderId } from '../config/types';
 import { UserFacingError } from '../config/validation';
 import type { ProviderRegistry } from '../providers/ProviderRegistry';
 import type { TerminalManager } from '../terminal/TerminalManager';
 import { AgentTreeItem } from '../views/AgentTreeItem';
+import type { ChatWebviewProvider } from '../views/ChatWebviewProvider';
+import { ConversationTreeItem } from '../views/ConversationTreeItem';
 
 interface CommandServices {
   readonly agents: AgentManager;
   readonly terminals: TerminalManager;
   readonly providers: ProviderRegistry;
+  readonly chats: ChatSessionManager;
+  readonly chatView: ChatWebviewProvider;
   readonly output: vscode.OutputChannel;
 }
 
 export function registerCommands(context: vscode.ExtensionContext, services: CommandServices): void {
-  const { agents, terminals } = services;
+  const { agents, terminals, chats, chatView } = services;
   const register = (id: string, handler: (...args: unknown[]) => Promise<void>): void => {
     context.subscriptions.push(
       vscode.commands.registerCommand(id, (...args: unknown[]) => runSafely(services.output, () => handler(...args))),
@@ -32,16 +37,69 @@ export function registerCommands(context: vscode.ExtensionContext, services: Com
 
   register('agentWorkspace.refresh', async () => agents.reload());
 
-  register('agentWorkspace.toggleAgent', async (value) => {
+  register('agentWorkspace.openChat', async (value) => {
+    const agent = await resolveAgent(value, agents);
+    if (agent) {
+      await chatView.selectAgent(agent);
+    }
+  });
+
+  register('agentWorkspace.newConversation', async (value) => {
     const agent = await resolveAgent(value, agents);
     if (!agent) {
       return;
     }
-    if (terminals.isRunning(agent.id)) {
-      terminals.focus(agent.id);
-    } else {
-      await startAgent(agents, terminals, agent);
+    const conversation = chats.createConversation(agent);
+    await chatView.selectConversation(agent, conversation.id);
+  });
+
+  register('agentWorkspace.openConversation', async (value) => {
+    const resolved = await resolveConversation(value, agents, chats);
+    if (resolved) {
+      await chatView.selectConversation(resolved.agent, resolved.conversationId);
     }
+  });
+
+  register('agentWorkspace.renameConversation', async (value) => {
+    const resolved = await resolveConversation(value, agents, chats);
+    if (!resolved) {
+      return;
+    }
+    const conversation = chats.getConversation(resolved.agent.id, resolved.conversationId);
+    if (!conversation) {
+      return;
+    }
+    const title = await vscode.window.showInputBox({
+      title: 'Rename Conversation',
+      prompt: 'A short title shown under this agent',
+      value: conversation.title,
+      ignoreFocusOut: true,
+      validateInput: (candidate) => (candidate.trim() ? undefined : 'Conversation title cannot be empty.'),
+    });
+    if (title !== undefined) {
+      chats.renameConversation(resolved.agent.id, conversation.id, title);
+    }
+  });
+
+  register('agentWorkspace.deleteConversation', async (value) => {
+    const resolved = await resolveConversation(value, agents, chats);
+    if (!resolved) {
+      return;
+    }
+    const conversation = chats.getConversation(resolved.agent.id, resolved.conversationId);
+    if (!conversation) {
+      return;
+    }
+    const confirmation = await vscode.window.showWarningMessage(
+      `Remove conversation "${conversation.title}"? Its Codex thread will be archived.`,
+      { modal: true },
+      'Remove Conversation',
+    );
+    if (confirmation !== 'Remove Conversation') {
+      return;
+    }
+    await chats.deleteConversation(resolved.agent.id, conversation.id);
+    await chatView.selectAgent(resolved.agent);
   });
 
   register('agentWorkspace.startAgent', async (value) => {
@@ -83,7 +141,9 @@ export function registerCommands(context: vscode.ExtensionContext, services: Com
     if (!draft) {
       return;
     }
-    await agents.update(agent.id, draft);
+    const updated = await agents.update(agent.id, draft);
+    chats.resetAgentSessions(agent.id);
+    await chatView.refreshSelectedAgent(updated);
     terminals.stop(agent.id);
   });
 
@@ -102,6 +162,7 @@ export function registerCommands(context: vscode.ExtensionContext, services: Com
     }
     terminals.stop(agent.id);
     await agents.delete(agent.id);
+    chats.forgetAgent(agent.id);
     const removeInstructions = await vscode.window.showWarningMessage(
       `Also move ${agent.instructionsFile} to the trash?`,
       'Move to Trash',
@@ -180,6 +241,29 @@ async function resolveAgent(value: unknown, manager: AgentManager): Promise<Agen
     { title: 'Select Agent', placeHolder: 'Choose an agent' },
   );
   return pick?.agent;
+}
+
+async function resolveConversation(
+  value: unknown,
+  agents: AgentManager,
+  chats: ChatSessionManager,
+): Promise<{ agent: AgentConfig; conversationId: string } | undefined> {
+  if (value instanceof ConversationTreeItem) {
+    return { agent: agents.require(value.agent.id), conversationId: value.conversation.id };
+  }
+  const picks = agents.list().flatMap((agent) =>
+    chats.listConversations(agent.id).map((conversation) => ({
+      label: conversation.title,
+      description: agent.name,
+      agent,
+      conversationId: conversation.id,
+    })),
+  );
+  const pick = await vscode.window.showQuickPick(picks, {
+    title: 'Select Conversation',
+    placeHolder: 'Choose a conversation',
+  });
+  return pick ? { agent: pick.agent, conversationId: pick.conversationId } : undefined;
 }
 
 async function startAgent(manager: AgentManager, terminals: TerminalManager, agent: AgentConfig): Promise<void> {
