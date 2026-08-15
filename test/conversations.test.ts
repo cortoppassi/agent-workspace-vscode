@@ -78,7 +78,7 @@ void test('readStoredConversations preserves model selection', () => {
   );
 });
 
-void test('readStoredConversations preserves valid Smart Dispatch decisions', () => {
+void test('readStoredConversations preserves valid Modo Economia decisions', () => {
   const dispatch = {
     version: 1 as const,
     routedAt: 10,

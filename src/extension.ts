@@ -75,7 +75,7 @@ async function registerWithoutWorkspace(context: vscode.ExtensionContext): Promi
   await vscode.commands.executeCommand('setContext', 'agentWorkspace.hasCodexAgents', false);
   const commandIds = [
     'agentWorkspace.createAgent',
-    'agentWorkspace.smartDispatch',
+    'agentWorkspace.economyMode',
     'agentWorkspace.refresh',
     'agentWorkspace.openChat',
     'agentWorkspace.newConversation',

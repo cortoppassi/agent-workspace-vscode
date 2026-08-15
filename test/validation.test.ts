@@ -34,11 +34,15 @@ void test('parseWorkspaceConfig accepts version 1 config', () => {
         instructionsFile: '.agent-workspace/agents/backend.md',
         cwd: '.',
         specialties: ['API', 'SQL'],
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'medium',
       },
     ],
   });
   assert.equal(config.agents[0]?.id, 'backend');
   assert.deepEqual(config.agents[0]?.specialties, ['API', 'SQL']);
+  assert.equal(config.agents[0]?.model, 'gpt-5.6-terra');
+  assert.equal(config.agents[0]?.reasoningEffort, 'medium');
 });
 
 void test('agent specialties are optional and validated', () => {

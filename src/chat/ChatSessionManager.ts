@@ -138,10 +138,15 @@ export class ChatSessionManager implements vscode.Disposable {
   public getState(conversationId: string): ChatState {
     const session = this.session(conversationId);
     const conversation = this.conversations.find((candidate) => candidate.id === conversationId);
+    const agent = conversation
+      ? this.agents.list().find((candidate) => candidate.id === conversation.agentId)
+      : undefined;
     const defaultModel = this.models.find((model) => model.isDefault) ?? this.models[0];
-    const selectedModel = conversation?.model ?? defaultModel?.model;
+    const selectedModel = agent?.model ?? conversation?.model ?? defaultModel?.model;
     const selectedModelMetadata = this.models.find((model) => model.model === selectedModel);
-    const selectedReasoningEffort = conversation?.reasoningEffort ?? selectedModelMetadata?.defaultReasoningEffort;
+    const selectedReasoningEffort = agent?.reasoningEffort
+      ?? conversation?.reasoningEffort
+      ?? selectedModelMetadata?.defaultReasoningEffort;
     return {
       messages: [...session.messages],
       ready: session.loaded,
@@ -205,15 +210,13 @@ export class ChatSessionManager implements vscode.Disposable {
     }
   }
 
-  public setConversationModel(
+  public async setAgentModel(
     agentId: string,
-    conversationId: string,
     modelId: string,
     reasoningEffort?: string,
-  ): void {
-    const conversation = this.requireConversation(agentId, conversationId);
-    if (this.isBusy(conversationId)) {
-      throw new UserFacingError('Stop the active response before changing its model.');
+  ): Promise<void> {
+    if (this.listConversations(agentId).some((conversation) => this.isBusy(conversation.id))) {
+      throw new UserFacingError('Stop the active response before changing this agent model.');
     }
     const model = this.models.find((candidate) => candidate.model === modelId);
     if (!model) {
@@ -225,11 +228,10 @@ export class ChatSessionManager implements vscode.Disposable {
     ) {
       throw new UserFacingError('The selected reasoning effort is not supported by this model.');
     }
-    this.replaceConversation({
-      ...conversation,
-      model: model.model,
-      reasoningEffort: reasoningEffort ?? model.defaultReasoningEffort,
-    });
+    await this.agents.setModelSelection(agentId, model.model, reasoningEffort ?? model.defaultReasoningEffort);
+    for (const conversation of this.listConversations(agentId)) {
+      this.changedEmitter.fire(conversation.id);
+    }
   }
 
   public recordDispatch(agentId: string, conversationId: string, dispatch: DispatchRecord): void {
@@ -325,6 +327,8 @@ export class ChatSessionManager implements vscode.Disposable {
     }
     await this.ensureThread(agent, conversationId, session);
     const conversation = this.requireConversation(agent.id, conversationId);
+    const selectedModel = agent.model ?? conversation.model;
+    const selectedReasoningEffort = agent.reasoningEffort ?? conversation.reasoningEffort;
     if (!session.threadId) {
       throw new UserFacingError(`Could not start a chat for "${agent.name}".`);
     }
@@ -349,8 +353,8 @@ export class ChatSessionManager implements vscode.Disposable {
         threadId: session.threadId,
         clientUserMessageId: userMessage.id,
         input: [{ type: 'text', text: prompt, text_elements: [] }],
-        ...(conversation.model ? { model: conversation.model } : {}),
-        ...(conversation.reasoningEffort ? { effort: conversation.reasoningEffort } : {}),
+        ...(selectedModel ? { model: selectedModel } : {}),
+        ...(selectedReasoningEffort ? { effort: selectedReasoningEffort } : {}),
       });
       const turnId = response.turn?.id;
       if (!turnId) {
@@ -421,13 +425,14 @@ export class ChatSessionManager implements vscode.Disposable {
       }
     }
 
+    const selectedModel = agent.model ?? conversation.model;
     const started = await this.client.request<ThreadResponse>('thread/start', {
       cwd,
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
       developerInstructions,
       serviceName: 'agent_workspace',
-      ...(conversation.model ? { model: conversation.model } : {}),
+      ...(selectedModel ? { model: selectedModel } : {}),
     });
     const threadId = started.thread?.id;
     if (!threadId) {

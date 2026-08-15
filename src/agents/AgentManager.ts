@@ -101,6 +101,29 @@ export class AgentManager implements vscode.Disposable {
     return agent;
   }
 
+  public async setModelSelection(
+    id: string,
+    model: string,
+    reasoningEffort?: string,
+  ): Promise<AgentConfig> {
+    const index = this.agents.findIndex((agent) => agent.id === id);
+    const existing = this.agents[index];
+    if (!existing) {
+      throw new UserFacingError('The selected agent no longer exists.');
+    }
+    const updated: AgentConfig = {
+      ...existing,
+      model,
+      ...(reasoningEffort ? { reasoningEffort } : { reasoningEffort: undefined }),
+    };
+    const next = [...this.agents];
+    next[index] = updated;
+    await this.configManager.save(next);
+    this.agents = next;
+    this.changedEmitter.fire();
+    return updated;
+  }
+
   public require(id: string): AgentConfig {
     const agent = this.agents.find((candidate) => candidate.id === id);
     if (!agent) {

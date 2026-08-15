@@ -92,6 +92,8 @@ function parseAgent(value: unknown, index: number): AgentConfig {
   const cwd = readString(value, 'cwd', index);
   const command = typeof value.command === 'string' ? value.command : undefined;
   const specialties = readSpecialties(value.specialties, name);
+  const model = readOptionalString(value.model, 'model', name);
+  const reasoningEffort = readOptionalString(value.reasoningEffort, 'reasoningEffort', name);
 
   if (!ID_PATTERN.test(id)) {
     throw new UserFacingError(`Agent id "${id}" is not a safe id.`);
@@ -108,8 +110,20 @@ function parseAgent(value: unknown, index: number): AgentConfig {
     instructionsFile,
     cwd,
     ...(specialties.length > 0 ? { specialties } : {}),
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(command ? { command } : {}),
   };
+}
+
+function readOptionalString(value: unknown, key: string, agentName: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new UserFacingError(`Agent "${agentName}" has an invalid ${key}.`);
+  }
+  return value.trim();
 }
 
 function readSpecialties(value: unknown, agentName: string): string[] {

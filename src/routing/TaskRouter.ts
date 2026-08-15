@@ -63,13 +63,20 @@ export function recommendRoutes(
   models: readonly CodexModel[],
 ): RouteRecommendation[] {
   const complexity = assessTaskComplexity(task);
-  const modelSelection = chooseModel(models, complexity);
   const ranked = profiles
     .filter((profile) => profile.agent.provider === 'codex')
-    .map((profile, index) => scoreProfile(task, profile, index))
+    .map((profile, index) => {
+      const scored = scoreProfile(task, profile, index);
+      const modelSelection = chooseAgentModel(profile.agent, models);
+      return {
+        ...scored,
+        modelSelection,
+        score: scored.score + modelFitScore(modelSelection.model?.model ?? profile.agent.model, complexity),
+      };
+    })
     .sort((left, right) => right.score - left.score || left.index - right.index);
 
-  return ranked.map(({ profile, score, specialtyMatches, domainMatches }) => {
+  return ranked.map(({ profile, score, specialtyMatches, domainMatches, modelSelection }) => {
     const confidence = Math.min(0.95, score > 0 ? 0.5 + score * 0.04 : 0.35);
     const agentReason = specialtyMatches.length > 0
       ? `Matched specialties: ${specialtyMatches.join(', ')}.`
@@ -104,6 +111,7 @@ export function createDispatchRecord(
   recommendation: RouteRecommendation,
   routedAt: number,
 ): DispatchRecord {
+  const model = recommendation.model?.model ?? recommendation.agent.model;
   return {
     version: 1,
     routedAt,
@@ -111,7 +119,7 @@ export function createDispatchRecord(
     confidence: recommendation.confidence,
     agentReason: recommendation.agentReason,
     modelReason: recommendation.modelReason,
-    ...(recommendation.model ? { model: recommendation.model.model } : {}),
+    ...(model ? { model } : {}),
     ...(recommendation.reasoningEffort ? { reasoningEffort: recommendation.reasoningEffort } : {}),
   };
 }
@@ -177,37 +185,56 @@ function scoreProfile(task: string, profile: AgentRoutingProfile, index: number)
   return { profile, index, score, specialtyMatches, domainMatches };
 }
 
-function chooseModel(models: readonly CodexModel[], complexity: TaskComplexity): {
+function chooseAgentModel(agent: AgentConfig, models: readonly CodexModel[]): {
   readonly model?: CodexModel;
   readonly reasoningEffort?: string;
   readonly reason: string;
 } {
   if (models.length === 0) {
-    return { reason: 'Model metadata was unavailable, so Codex will use its automatic selection.' };
+    if (agent.model) {
+      return {
+        ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+        reason: `The ${agent.name} profile is configured to use ${agent.model}${agent.reasoningEffort ? ` with ${agent.reasoningEffort} reasoning` : ''}. Model metadata is currently unavailable.`,
+      };
+    }
+    return { reason: `The ${agent.name} profile uses Codex automatic model selection.` };
   }
-  const preferredTiers = complexity === 'simple' ? ['luna', 'terra'] : complexity === 'standard' ? ['terra'] : ['sol'];
-  const model = preferredTiers
-    .map((tier) => models.find((candidate) => normalize(candidate.model).includes(tier)))
-    .find((candidate) => candidate !== undefined)
+  const configuredModel = agent.model
+    ? models.find((candidate) => candidate.model === agent.model)
+    : undefined;
+  const model = configuredModel
     ?? models.find((candidate) => candidate.isDefault)
     ?? models[0];
   if (!model) {
     return { reason: 'Codex will use its automatic model selection.' };
   }
-  const desiredEffort = complexity === 'simple' ? 'low' : complexity === 'standard' ? 'medium' : 'high';
-  const reasoningEffort = model.supportedReasoningEfforts.some((candidate) => candidate.reasoningEffort === desiredEffort)
-    ? desiredEffort
+  const requestedEffort = agent.reasoningEffort;
+  const reasoningEffort = requestedEffort
+    && model.supportedReasoningEfforts.some((candidate) => candidate.reasoningEffort === requestedEffort)
+    ? requestedEffort
     : model.defaultReasoningEffort ?? model.supportedReasoningEfforts[0]?.reasoningEffort;
-  const goal = complexity === 'simple'
-    ? 'The task looks narrow and well-defined, so this route prioritizes lower cost and latency.'
-    : complexity === 'standard'
-      ? 'The task needs balanced capability, cost, and latency.'
-      : 'The task has complex signals, so this route prioritizes reliability over minimum cost.';
+  const prefix = configuredModel
+    ? `The ${agent.name} profile is configured to use`
+    : agent.model
+      ? `The configured model ${agent.model} is unavailable; falling back to`
+      : `The ${agent.name} profile has no fixed model; using the Codex default`;
   return {
     model,
     ...(reasoningEffort ? { reasoningEffort } : {}),
-    reason: `${goal} Selected ${model.displayName}${reasoningEffort ? ` with ${reasoningEffort} reasoning` : ''}.`,
+    reason: `${prefix} ${model.displayName}${reasoningEffort ? ` with ${reasoningEffort} reasoning` : ''}.`,
   };
+}
+
+function modelFitScore(modelId: string | undefined, complexity: TaskComplexity): number {
+  const normalizedModel = normalize(modelId ?? '');
+  const tier = normalizedModel.includes('luna') ? 'luna' : normalizedModel.includes('terra') ? 'terra' : 'sol';
+  if (complexity === 'simple') {
+    return tier === 'luna' ? 6 : tier === 'terra' ? 3 : 0;
+  }
+  if (complexity === 'standard') {
+    return tier === 'terra' ? 5 : tier === 'sol' ? 2 : 1;
+  }
+  return tier === 'sol' ? 6 : tier === 'terra' ? 2 : -3;
 }
 
 function tokenize(value: string): string[] {

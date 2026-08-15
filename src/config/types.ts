@@ -9,6 +9,8 @@ export interface AgentConfig {
   readonly instructionsFile: string;
   readonly cwd: string;
   readonly specialties?: readonly string[];
+  readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly command?: string;
 }
 

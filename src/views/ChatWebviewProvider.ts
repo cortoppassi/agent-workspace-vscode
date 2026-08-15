@@ -4,9 +4,10 @@ import type { AgentManager } from '../agents/AgentManager';
 import type { ChatSessionManager } from '../chat/ChatSessionManager';
 import type { AgentConfig } from '../config/types';
 import { UserFacingError } from '../config/validation';
+import { createDispatchRecord, recommendRoutes } from '../routing/TaskRouter';
 
 interface WebviewMessage {
-  readonly type: 'send' | 'interrupt' | 'selectModel';
+  readonly type: 'send' | 'interrupt' | 'selectModel' | 'economyDispatch';
   readonly text?: string;
   readonly model?: string;
   readonly effort?: string;
@@ -19,6 +20,8 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
   private view: vscode.WebviewView | undefined;
   private selectedAgentId: string | undefined;
   private selectedConversationId: string | undefined;
+  private economyModeActive = false;
+  private economyDispatchBusy = false;
 
   public constructor(
     private readonly agents: AgentManager,
@@ -72,6 +75,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     const conversation = this.chats.selectConversation(agent.id, conversationId);
     this.selectedAgentId = agent.id;
     this.selectedConversationId = conversation.id;
+    this.economyModeActive = false;
     this.view?.show(true);
     await vscode.commands.executeCommand(`${ChatWebviewProvider.viewType}.focus`);
     this.update();
@@ -85,6 +89,15 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     await this.selectConversation(agent, this.selectedConversationId);
   }
 
+  public async openEconomyMode(): Promise<void> {
+    this.selectedAgentId = undefined;
+    this.selectedConversationId = undefined;
+    this.economyModeActive = true;
+    this.view?.show(true);
+    await vscode.commands.executeCommand(`${ChatWebviewProvider.viewType}.focus`);
+    this.update();
+  }
+
   public dispose(): void {
     for (const subscription of this.subscriptions) {
       subscription.dispose();
@@ -93,9 +106,26 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
 
   private receive(value: unknown): void {
     const message = parseWebviewMessage(value);
+    if (!message) {
+      return;
+    }
+    if (message.type === 'economyDispatch' && message.text) {
+      if (!this.economyModeActive || this.economyDispatchBusy) {
+        return;
+      }
+      this.economyDispatchBusy = true;
+      this.update();
+      void this.dispatchEconomically(message.text)
+        .catch((error: unknown) => showChatError(error))
+        .finally(() => {
+          this.economyDispatchBusy = false;
+          this.update();
+        });
+      return;
+    }
     const agent = this.selectedAgent();
     const conversationId = this.selectedConversationId;
-    if (!message || !agent || !conversationId) {
+    if (!agent || !conversationId) {
       return;
     }
     if (message.type === 'send' && message.text) {
@@ -109,12 +139,52 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
       );
     }
     if (message.type === 'selectModel' && message.model) {
-      try {
-        this.chats.setConversationModel(agent.id, conversationId, message.model, message.effort);
-      } catch (error: unknown) {
-        void showChatError(error);
-      }
+      void this.chats.setAgentModel(agent.id, message.model, message.effort).catch((error: unknown) =>
+        showChatError(error),
+      );
     }
+  }
+
+  private async dispatchEconomically(task: string): Promise<void> {
+    const eligibleAgents = this.agents.list().filter((agent) => agent.provider === 'codex');
+    if (eligibleAgents.length === 0) {
+      throw new UserFacingError('O Modo Economia precisa de pelo menos um agente Codex.');
+    }
+    const [models, profiles] = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Modo Economia: analisando a melhor rota' },
+      async () => Promise.all([
+        this.chats.getAvailableModels(),
+        Promise.all(eligibleAgents.map(async (agent) => ({
+          agent,
+          instructions: await this.agents.readInstructions(agent),
+        }))),
+      ]),
+    );
+    const route = recommendRoutes(task, profiles, models)[0];
+    if (!route) {
+      throw new UserFacingError('O Modo Economia não encontrou um agente disponível.');
+    }
+    const modelName = route.model?.displayName ?? route.agent.model ?? 'seleção automática do Codex';
+    const effort = route.reasoningEffort ? ` · reasoning ${route.reasoningEffort}` : '';
+    const decision = await vscode.window.showInformationMessage(
+      `Modo Economia escolheu ${route.agent.name} — ${modelName}${effort}`,
+      {
+        modal: true,
+        detail: `${route.agentReason}\n\n${route.modelReason}\n\nConfiança: ${Math.round(route.confidence * 100)}%.`,
+      },
+      'Executar',
+    );
+    if (decision !== 'Executar') {
+      return;
+    }
+    if (route.model && route.agent.model !== route.model.model) {
+      await this.chats.setAgentModel(route.agent.id, route.model.model, route.reasoningEffort);
+    }
+    const agent = this.agents.require(route.agent.id);
+    const conversation = this.chats.createConversation(agent);
+    this.chats.recordDispatch(agent.id, conversation.id, createDispatchRecord(route, Date.now()));
+    await this.selectConversation(agent, conversation.id);
+    await this.chats.send(agent, conversation.id, task);
   }
 
   private update(): void {
@@ -125,9 +195,13 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     const conversation = agent && this.selectedConversationId
       ? this.chats.getConversation(agent.id, this.selectedConversationId)
       : undefined;
-    this.view.title = agent && conversation ? `${agent.name} · ${conversation.title}` : 'Chat';
+    this.view.title = this.economyModeActive
+      ? 'Modo Economia'
+      : agent && conversation ? `${agent.name} · ${conversation.title}` : 'Chat';
     void this.view.webview.postMessage({
       type: 'state',
+      mode: this.economyModeActive ? 'economy' : 'chat',
+      economyBusy: this.economyDispatchBusy,
       agent: agent ? { id: agent.id, name: agent.name, provider: agent.provider } : undefined,
       conversation: conversation
         ? { id: conversation.id, title: conversation.title, ...(conversation.dispatch ? { dispatch: conversation.dispatch } : {}) }
@@ -152,7 +226,7 @@ function parseWebviewMessage(value: unknown): WebviewMessage | undefined {
     return undefined;
   }
   const type = value.type;
-  if (type !== 'send' && type !== 'interrupt' && type !== 'selectModel') {
+  if (type !== 'send' && type !== 'interrupt' && type !== 'selectModel' && type !== 'economyDispatch') {
     return undefined;
   }
   const text = 'text' in value && typeof value.text === 'string' ? value.text : undefined;
@@ -234,18 +308,18 @@ function renderHtml(): string {
     <section id="chat">
       <div id="settings">
         <div class="setting">
-          <label for="model">Model</label>
-          <select id="model" aria-label="Model"></select>
+          <label for="model">Agent model</label>
+          <select id="model" aria-label="Agent model"></select>
         </div>
         <div class="setting">
-          <label for="effort">Reasoning</label>
-          <select id="effort" aria-label="Reasoning effort"></select>
+          <label for="effort">Agent reasoning</label>
+          <select id="effort" aria-label="Agent reasoning effort"></select>
         </div>
         <span id="model-status"></span>
       </div>
-      <aside id="dispatch" aria-label="Smart Dispatch decision" hidden>
+      <aside id="dispatch" aria-label="Decisão do Modo Economia" hidden>
         <div id="dispatch-header">
-          <strong>Smart Dispatch</strong>
+          <strong>Modo Economia</strong>
           <span id="dispatch-confidence"></span>
         </div>
         <div id="dispatch-summary"></div>
@@ -278,6 +352,7 @@ function renderHtml(): string {
     const vscode = acquireVsCodeApi();
     const empty = document.getElementById('empty');
     const chat = document.getElementById('chat');
+    const settings = document.getElementById('settings');
     const messages = document.getElementById('messages');
     const error = document.getElementById('error');
     const model = document.getElementById('model');
@@ -300,6 +375,7 @@ function renderHtml(): string {
     let currentConversationId;
     let currentModels = [];
     let usageExpanded = false;
+    let economyMode = false;
 
     window.addEventListener('message', (event) => {
       const payload = event.data;
@@ -307,6 +383,40 @@ function renderHtml(): string {
       const agent = payload.agent;
       const conversation = payload.conversation;
       const state = payload.state;
+      economyMode = payload.mode === 'economy';
+      if (economyMode) {
+        const economyBusy = Boolean(payload.economyBusy);
+        empty.style.display = 'none';
+        chat.style.display = 'flex';
+        settings.style.display = 'none';
+        dispatch.hidden = true;
+        usage.style.display = 'none';
+        error.style.display = 'none';
+        messages.replaceChildren();
+        const welcome = document.createElement('div');
+        welcome.id = 'welcome';
+        const title = document.createElement('strong');
+        title.textContent = 'Modo Economia';
+        const detail = document.createElement('span');
+        detail.textContent = 'Descreva a tarefa sem escolher um agente. A rota com melhor custo-benefício será selecionada automaticamente.';
+        const hint = document.createElement('span');
+        hint.textContent = 'A decisão será explicada antes da execução.';
+        welcome.append(title, detail, hint);
+        messages.append(welcome);
+        currentConversationId = undefined;
+        currentModels = [];
+        input.disabled = economyBusy;
+        send.disabled = economyBusy;
+        send.textContent = economyBusy ? 'Analisando…' : 'Analisar e enviar';
+        stop.style.display = 'none';
+        working.textContent = economyBusy ? 'Analisando tarefa e agentes…' : '';
+        working.style.display = economyBusy ? 'inline' : 'none';
+        shortcut.style.display = economyBusy ? 'none' : '';
+        shortcut.textContent = 'Enter para enviar';
+        input.placeholder = 'Descreva a tarefa para o Modo Economia...';
+        if (!economyBusy) input.focus();
+        return;
+      }
       if (!agent || !conversation || !state) {
         empty.style.display = 'block';
         chat.style.display = 'none';
@@ -324,6 +434,9 @@ function renderHtml(): string {
       }
       empty.style.display = 'none';
       chat.style.display = 'flex';
+      settings.style.display = 'flex';
+      send.textContent = 'Send';
+      shortcut.textContent = 'Enter to send';
       currentModels = state.models || [];
       renderModels(state.model, state.reasoningEffort);
       const settingsDisabled = state.busy || state.modelsLoading || currentModels.length === 0;
@@ -411,7 +524,7 @@ function renderHtml(): string {
       event.preventDefault();
       const text = input.value.trim();
       if (!text) return;
-      vscode.postMessage({ type: 'send', text });
+      vscode.postMessage({ type: economyMode ? 'economyDispatch' : 'send', text });
       input.value = '';
       resizeInput();
     });

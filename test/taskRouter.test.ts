@@ -9,8 +9,8 @@ import {
   recommendRoutes,
 } from '../src/routing/TaskRouter';
 
-const frontend = agent('frontend', 'Frontend', ['React', 'CSS', 'UI']);
-const backend = agent('backend', 'Backend', ['API', 'SQL', 'authentication']);
+const frontend = agent('frontend', 'Frontend', ['React', 'CSS', 'UI'], 'gpt-5.6-luna', 'low');
+const backend = agent('backend', 'Backend', ['API', 'SQL', 'authentication'], 'gpt-5.6-sol', 'high');
 const models: CodexModel[] = [
   model('gpt-5.6-luna', 'GPT-5.6 Luna', ['low', 'medium'], 'low'),
   model('gpt-5.6-terra', 'GPT-5.6 Terra', ['low', 'medium', 'high'], 'medium'),
@@ -47,18 +47,33 @@ void test('recommendRoutes prioritizes capability for a complex task', () => {
 });
 
 void test('recommendRoutes leaves model selection to Codex when metadata is unavailable', () => {
-  const route = recommendRoutes('Update the README', [{ agent: frontend, instructions: 'UI docs.' }], [])[0];
+  const unconfigured = agent('docs', 'Docs', ['README']);
+  const route = recommendRoutes('Update the README', [{ agent: unconfigured, instructions: 'Documentation.' }], [])[0];
   assert.equal(route?.model, undefined);
-  assert.match(route?.modelReason ?? '', /automatic selection/);
+  assert.match(route?.modelReason ?? '', /automatic model selection/);
 });
 
-void test('simple routes fall back to the efficient Terra tier when Luna is unavailable', () => {
+void test('routes fall back to the Codex default when an agent model is unavailable', () => {
   const route = recommendRoutes(
     'Update a CSS class',
     [{ agent: frontend, instructions: 'Frontend UI.' }],
     models.filter((candidate) => !candidate.model.includes('luna')),
   )[0];
-  assert.equal(route?.model?.model, 'gpt-5.6-terra');
+  assert.equal(route?.model?.model, 'gpt-5.6-sol');
+  assert.match(route?.modelReason ?? '', /unavailable/);
+});
+
+void test('simple work favors the cheaper configured agent when expertise is equivalent', () => {
+  const premiumFrontend = agent('premium', 'Premium Frontend', ['CSS'], 'gpt-5.6-sol', 'high');
+  const route = recommendRoutes(
+    'Adjust a CSS class',
+    [
+      { agent: premiumFrontend, instructions: 'Frontend UI.' },
+      { agent: frontend, instructions: 'Frontend UI.' },
+    ],
+    models,
+  )[0];
+  assert.equal(route?.agent.id, 'frontend');
 });
 
 void test('dispatch records are validated before being restored', () => {
@@ -74,7 +89,13 @@ void test('assessTaskComplexity distinguishes narrow and broad work', () => {
   assert.equal(assessTaskComplexity('Investigate performance and refactor the architecture'), 'complex');
 });
 
-function agent(id: string, name: string, specialties: readonly string[]): AgentConfig {
+function agent(
+  id: string,
+  name: string,
+  specialties: readonly string[],
+  modelId?: string,
+  reasoningEffort?: string,
+): AgentConfig {
   return {
     id,
     name,
@@ -82,6 +103,8 @@ function agent(id: string, name: string, specialties: readonly string[]): AgentC
     instructionsFile: `.agent-workspace/agents/${id}.md`,
     cwd: '.',
     specialties,
+    ...(modelId ? { model: modelId } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   };
 }
 

@@ -5,7 +5,6 @@ import type { AgentConfig, AgentDraft, ProviderId } from '../config/types';
 import { UserFacingError } from '../config/validation';
 import type { ProviderRegistry } from '../providers/ProviderRegistry';
 import type { TerminalManager } from '../terminal/TerminalManager';
-import { createDispatchRecord, recommendRoutes, type RouteRecommendation } from '../routing/TaskRouter';
 import { AgentTreeItem } from '../views/AgentTreeItem';
 import type { ChatWebviewProvider } from '../views/ChatWebviewProvider';
 import { ConversationTreeItem } from '../views/ConversationTreeItem';
@@ -38,58 +37,7 @@ export function registerCommands(context: vscode.ExtensionContext, services: Com
 
   register('agentWorkspace.refresh', async () => agents.reload());
 
-  register('agentWorkspace.smartDispatch', async () => {
-    const task = await vscode.window.showInputBox({
-      title: 'Smart Dispatch',
-      prompt: 'Describe the task once. Agent Workspace will recommend an agent, model, and reasoning effort.',
-      placeHolder: 'For example: Fix the responsive checkout layout',
-      ignoreFocusOut: true,
-      validateInput: (value) => (value.trim() ? undefined : 'Task cannot be empty.'),
-    });
-    if (task === undefined) {
-      return;
-    }
-
-    const eligibleAgents = agents.list().filter((agent) => agent.provider === 'codex');
-    if (eligibleAgents.length === 0) {
-      throw new UserFacingError('Smart Dispatch needs at least one Codex agent.');
-    }
-    const routes = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Agent Workspace: analyzing routes' },
-      async () => {
-        const [models, profiles] = await Promise.all([
-          chats.getAvailableModels(),
-          Promise.all(eligibleAgents.map(async (agent) => ({
-            agent,
-            instructions: await agents.readInstructions(agent),
-          }))),
-        ]);
-        return recommendRoutes(task, profiles, models);
-      },
-    );
-    const picked = await vscode.window.showQuickPick(
-      routes.map((route, index) => routePick(route, index === 0)),
-      {
-        title: 'Smart Dispatch: Confirm Route',
-        placeHolder: 'Select a route to create the conversation and start the task',
-        matchOnDescription: true,
-        matchOnDetail: true,
-        ignoreFocusOut: true,
-      },
-    );
-    if (!picked) {
-      return;
-    }
-
-    const route = picked.route;
-    const conversation = chats.createConversation(route.agent);
-    if (route.model) {
-      chats.setConversationModel(route.agent.id, conversation.id, route.model.model, route.reasoningEffort);
-    }
-    chats.recordDispatch(route.agent.id, conversation.id, createDispatchRecord(route, Date.now()));
-    await chatView.selectConversation(route.agent, conversation.id);
-    await chats.send(route.agent, conversation.id, task);
-  });
+  register('agentWorkspace.economyMode', async () => chatView.openEconomyMode());
 
   register('agentWorkspace.openChat', async (value) => {
     const agent = await resolveAgent(value, agents);
@@ -271,7 +219,7 @@ async function promptForAgent(existing?: AgentConfig): Promise<AgentDraft | unde
   if (provider === 'codex') {
     const specialtiesInput = await vscode.window.showInputBox({
       title: existing ? 'Edit Agent: Specialties' : 'Create Agent: Specialties',
-      prompt: 'Comma-separated areas used by Smart Dispatch, such as frontend, React, CSS, or testing',
+      prompt: 'Comma-separated areas used by Modo Economia, such as frontend, React, CSS, or testing',
       value: existing?.specialties?.join(', '),
       placeHolder: 'frontend, React, CSS',
       ignoreFocusOut: true,
@@ -305,22 +253,6 @@ async function promptForAgent(existing?: AgentConfig): Promise<AgentDraft | unde
   };
 }
 
-function routePick(route: RouteRecommendation, recommended: boolean): {
-  readonly label: string;
-  readonly description: string;
-  readonly detail: string;
-  readonly route: RouteRecommendation;
-} {
-  const model = route.model?.displayName ?? 'Codex automatic';
-  const effort = route.reasoningEffort ? ` · ${capitalize(route.reasoningEffort)}` : '';
-  return {
-    label: `${recommended ? '$(sparkle) Recommended: ' : '$(hubot) '}${route.agent.name}`,
-    description: `${model}${effort} · ${Math.round(route.confidence * 100)}% confidence`,
-    detail: `${capitalize(route.complexity)} task — ${route.agentReason} ${route.modelReason}`,
-    route,
-  };
-}
-
 function validateSpecialtiesInput(value: string): string | undefined {
   const specialties = value.split(',').map((specialty) => specialty.trim()).filter(Boolean);
   if (specialties.length > 12) {
@@ -329,10 +261,6 @@ function validateSpecialtiesInput(value: string): string | undefined {
   return specialties.some((specialty) => specialty.length > 40)
     ? 'Each specialty must contain at most 40 characters.'
     : undefined;
-}
-
-function capitalize(value: string): string {
-  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
 async function resolveAgent(value: unknown, manager: AgentManager): Promise<AgentConfig | undefined> {

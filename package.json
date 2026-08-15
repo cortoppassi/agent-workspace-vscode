@@ -73,8 +73,8 @@
         "icon": "$(add)"
       },
       {
-        "command": "agentWorkspace.smartDispatch",
-        "title": "Smart Dispatch",
+        "command": "agentWorkspace.economyMode",
+        "title": "Modo Economia",
         "category": "Agent Workspace",
         "icon": "$(sparkle)"
       },
@@ -152,7 +152,7 @@
     "menus": {
       "view/title": [
         {
-          "command": "agentWorkspace.smartDispatch",
+          "command": "agentWorkspace.economyMode",
           "when": "view == agentWorkspace.agents && agentWorkspace.hasCodexAgents",
           "group": "navigation@1"
         },
