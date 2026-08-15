@@ -78,6 +78,28 @@ void test('readStoredConversations preserves model selection', () => {
   );
 });
 
+void test('readStoredConversations preserves valid Smart Dispatch decisions', () => {
+  const dispatch = {
+    version: 1 as const,
+    routedAt: 10,
+    complexity: 'simple' as const,
+    confidence: 0.8,
+    agentReason: 'Matched specialties: CSS.',
+    modelReason: 'Selected an economical model.',
+  };
+  assert.deepEqual(
+    readStoredConversations([{
+      id: 'one',
+      agentId: 'agent',
+      title: 'Routed task',
+      createdAt: 1,
+      updatedAt: 2,
+      dispatch,
+    }]),
+    [{ id: 'one', agentId: 'agent', title: 'Routed task', createdAt: 1, updatedAt: 2, dispatch }],
+  );
+});
+
 void test('titleFromFirstMessage creates a compact single-line title', () => {
   assert.equal(titleFromFirstMessage('  Fix   the\nlogin flow  '), 'Fix the login flow');
   assert.equal(titleFromFirstMessage('x'.repeat(60)), `${'x'.repeat(47)}…`);

@@ -72,8 +72,10 @@ async function registerWithoutWorkspace(context: vscode.ExtensionContext): Promi
     vscode.window.registerWebviewViewProvider(ChatWebviewProvider.viewType, new EmptyChatWebviewProvider()),
   );
   await vscode.commands.executeCommand('setContext', 'agentWorkspace.hasAgents', false);
+  await vscode.commands.executeCommand('setContext', 'agentWorkspace.hasCodexAgents', false);
   const commandIds = [
     'agentWorkspace.createAgent',
+    'agentWorkspace.smartDispatch',
     'agentWorkspace.refresh',
     'agentWorkspace.openChat',
     'agentWorkspace.newConversation',

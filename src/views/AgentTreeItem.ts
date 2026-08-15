@@ -18,7 +18,7 @@ export class AgentTreeItem extends vscode.TreeItem {
     this.id = agent.id;
     this.description = usage ? `${formatTokenCount(usage.totalTokens)} total` : status;
     this.tooltip = new vscode.MarkdownString(
-      `**${agent.name}**\n\nProvider: ${providers.displayName(agent.provider)}\n\nWorking directory: \`${agent.cwd}\`\n\nStatus: ${status}${usage ? `\n\nTotal usage across conversations: ${usage.totalTokens.toLocaleString()} tokens` : ''}`,
+      `**${agent.name}**\n\nProvider: ${providers.displayName(agent.provider)}\n\nWorking directory: \`${agent.cwd}\`${agent.specialties?.length ? `\n\nSpecialties: ${agent.specialties.join(', ')}` : ''}\n\nStatus: ${status}${usage ? `\n\nTotal usage across conversations: ${usage.totalTokens.toLocaleString()} tokens` : ''}`,
     );
     this.contextValue = `${agent.provider}Agent${status === AgentStatus.Running ? 'Running' : 'Stopped'}`;
     this.iconPath = new vscode.ThemeIcon(

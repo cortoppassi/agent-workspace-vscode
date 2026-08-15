@@ -59,6 +59,11 @@ export class AgentTreeProvider implements vscode.TreeDataProvider<TreeElement>, 
 
   public refresh(): void {
     void vscode.commands.executeCommand('setContext', 'agentWorkspace.hasAgents', this.agents.list().length > 0);
+    void vscode.commands.executeCommand(
+      'setContext',
+      'agentWorkspace.hasCodexAgents',
+      this.agents.list().some((agent) => agent.provider === 'codex'),
+    );
     this.changedEmitter.fire(undefined);
   }
 

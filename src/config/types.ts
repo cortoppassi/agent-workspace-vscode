@@ -8,6 +8,7 @@ export interface AgentConfig {
   readonly provider: ProviderId;
   readonly instructionsFile: string;
   readonly cwd: string;
+  readonly specialties?: readonly string[];
   readonly command?: string;
 }
 
@@ -20,5 +21,6 @@ export interface AgentDraft {
   readonly name: string;
   readonly provider: ProviderId;
   readonly cwd: string;
+  readonly specialties?: readonly string[];
   readonly command?: string;
 }

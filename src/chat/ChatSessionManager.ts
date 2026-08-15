@@ -23,6 +23,7 @@ import {
   type JsonRpcMessage,
   type TokenUsageBreakdown,
 } from './protocol';
+import type { DispatchRecord } from '../routing/TaskRouter';
 
 const CONVERSATIONS_KEY = 'agentWorkspace.chat.conversations';
 const ACTIVE_CONVERSATIONS_KEY = 'agentWorkspace.chat.activeConversations';
@@ -229,6 +230,16 @@ export class ChatSessionManager implements vscode.Disposable {
       model: model.model,
       reasoningEffort: reasoningEffort ?? model.defaultReasoningEffort,
     });
+  }
+
+  public recordDispatch(agentId: string, conversationId: string, dispatch: DispatchRecord): void {
+    const conversation = this.requireConversation(agentId, conversationId);
+    this.replaceConversation({ ...conversation, dispatch });
+  }
+
+  public async getAvailableModels(): Promise<readonly CodexModel[]> {
+    await this.ensureModels();
+    return [...this.models];
   }
 
   public async deleteConversation(agentId: string, conversationId: string): Promise<void> {

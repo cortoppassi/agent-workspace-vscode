@@ -1,4 +1,5 @@
 import { readRecord, readString, readTokenUsageBreakdown, type TokenUsageBreakdown } from './protocol';
+import { readDispatchRecord, type DispatchRecord } from '../routing/TaskRouter';
 
 export const DEFAULT_CONVERSATION_TITLE = 'New conversation';
 
@@ -9,6 +10,7 @@ export interface ConversationConfig {
   readonly threadId?: string;
   readonly model?: string;
   readonly reasoningEffort?: string;
+  readonly dispatch?: DispatchRecord;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly usage?: TokenUsageBreakdown;
@@ -31,6 +33,7 @@ export function readStoredConversations(value: unknown): ConversationConfig[] {
     const threadId = readString(record, 'threadId');
     const model = readString(record, 'model');
     const reasoningEffort = readString(record, 'reasoningEffort');
+    const dispatch = readDispatchRecord(record?.dispatch);
     const usage = readTokenUsageBreakdown(record?.usage);
     return [{
       id,
@@ -41,6 +44,7 @@ export function readStoredConversations(value: unknown): ConversationConfig[] {
       ...(threadId ? { threadId } : {}),
       ...(model ? { model } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(dispatch ? { dispatch } : {}),
       ...(usage ? { usage } : {}),
     }];
   });

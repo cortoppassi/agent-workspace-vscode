@@ -1,7 +1,7 @@
 {
   "name": "agent-workspace",
   "displayName": "Agent Workspace",
-  "description": "Manage multiple CLI coding agents in a VS Code workspace.",
+  "description": "Route coding tasks to specialized local agents with explainable model selection and token usage.",
   "version": "0.1.0",
   "publisher": "local",
   "license": "MIT",
@@ -71,6 +71,12 @@
         "title": "Create Agent",
         "category": "Agent Workspace",
         "icon": "$(add)"
+      },
+      {
+        "command": "agentWorkspace.smartDispatch",
+        "title": "Smart Dispatch",
+        "category": "Agent Workspace",
+        "icon": "$(sparkle)"
       },
       {
         "command": "agentWorkspace.refresh",
@@ -146,14 +152,19 @@
     "menus": {
       "view/title": [
         {
+          "command": "agentWorkspace.smartDispatch",
+          "when": "view == agentWorkspace.agents && agentWorkspace.hasCodexAgents",
+          "group": "navigation@1"
+        },
+        {
           "command": "agentWorkspace.createAgent",
           "when": "view == agentWorkspace.agents",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "agentWorkspace.refresh",
           "when": "view == agentWorkspace.agents",
-          "group": "navigation@2"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

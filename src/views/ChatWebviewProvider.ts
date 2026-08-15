@@ -129,7 +129,9 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     void this.view.webview.postMessage({
       type: 'state',
       agent: agent ? { id: agent.id, name: agent.name, provider: agent.provider } : undefined,
-      conversation: conversation ? { id: conversation.id, title: conversation.title } : undefined,
+      conversation: conversation
+        ? { id: conversation.id, title: conversation.title, ...(conversation.dispatch ? { dispatch: conversation.dispatch } : {}) }
+        : undefined,
       state: conversation ? this.chats.getState(conversation.id) : undefined,
     });
   }
@@ -190,6 +192,12 @@ function renderHtml(): string {
     #settings select { min-width: 0; width: 100%; height: 28px; padding: 3px 22px 3px 7px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; font: inherit; }
     #settings select:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
     #model-status { display: none; flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: 0.82em; line-height: 1.35; }
+    #dispatch { margin: 8px 10px 0; padding: 8px 9px; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border); border-left: 2px solid var(--vscode-textLink-foreground); border-radius: 4px; }
+    #dispatch-header { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+    #dispatch-header strong { font-size: 0.9em; }
+    #dispatch-confidence { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 0.8em; white-space: nowrap; }
+    #dispatch-summary { line-height: 1.35; }
+    #dispatch-model-reason { margin-top: 3px; color: var(--vscode-descriptionForeground); font-size: 0.84em; line-height: 1.35; }
     #messages { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 10px 8px; }
     #welcome { display: grid; height: 100%; min-height: 140px; place-content: center; padding: 20px; color: var(--vscode-descriptionForeground); text-align: center; line-height: 1.5; }
     #welcome strong { margin-bottom: 4px; color: var(--vscode-foreground); font-size: 1.05em; }
@@ -235,6 +243,14 @@ function renderHtml(): string {
         </div>
         <span id="model-status"></span>
       </div>
+      <aside id="dispatch" aria-label="Smart Dispatch decision" hidden>
+        <div id="dispatch-header">
+          <strong>Smart Dispatch</strong>
+          <span id="dispatch-confidence"></span>
+        </div>
+        <div id="dispatch-summary"></div>
+        <div id="dispatch-model-reason"></div>
+      </aside>
       <div id="messages" aria-live="polite"></div>
       <div id="usage" title="Token usage for this conversation">
         <div id="usage-summary">
@@ -267,6 +283,10 @@ function renderHtml(): string {
     const model = document.getElementById('model');
     const effort = document.getElementById('effort');
     const modelStatus = document.getElementById('model-status');
+    const dispatch = document.getElementById('dispatch');
+    const dispatchConfidence = document.getElementById('dispatch-confidence');
+    const dispatchSummary = document.getElementById('dispatch-summary');
+    const dispatchModelReason = document.getElementById('dispatch-model-reason');
     const usage = document.getElementById('usage');
     const usageTotal = document.getElementById('usage-total');
     const usageDetail = document.getElementById('usage-detail');
@@ -312,6 +332,17 @@ function renderHtml(): string {
       modelStatus.textContent = state.modelsError
         || (state.modelsLoading ? 'Loading available models...' : currentModels.length === 0 ? 'No models available.' : '');
       modelStatus.style.display = modelStatus.textContent ? 'block' : 'none';
+      if (conversation.dispatch) {
+        dispatch.hidden = false;
+        dispatchConfidence.textContent = Math.round(conversation.dispatch.confidence * 100) + '% confidence';
+        dispatchSummary.textContent = capitalize(conversation.dispatch.complexity) + ' task · ' + conversation.dispatch.agentReason;
+        const routeChanged = conversation.dispatch.model && state.model && conversation.dispatch.model !== state.model;
+        dispatchModelReason.textContent = conversation.dispatch.modelReason
+          + (routeChanged ? ' The model was changed manually after routing.' : '');
+        dispatch.title = 'Routed ' + new Date(conversation.dispatch.routedAt).toLocaleString();
+      } else {
+        dispatch.hidden = true;
+      }
       messages.replaceChildren();
       for (const message of state.messages) {
         const item = document.createElement('article');

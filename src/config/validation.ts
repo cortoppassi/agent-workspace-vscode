@@ -37,6 +37,12 @@ export function validateDraft(draft: AgentDraft): void {
   if (draft.command?.includes('\n') || draft.command?.includes('\r')) {
     throw new UserFacingError('Custom CLI command must be a single line.');
   }
+  if ((draft.specialties?.length ?? 0) > 12) {
+    throw new UserFacingError('An agent can have at most 12 specialties.');
+  }
+  if (draft.specialties?.some((specialty) => !specialty.trim() || specialty.length > 40)) {
+    throw new UserFacingError('Agent specialties must contain between 1 and 40 characters.');
+  }
 }
 
 export function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
@@ -85,6 +91,7 @@ function parseAgent(value: unknown, index: number): AgentConfig {
   const instructionsFile = readString(value, 'instructionsFile', index);
   const cwd = readString(value, 'cwd', index);
   const command = typeof value.command === 'string' ? value.command : undefined;
+  const specialties = readSpecialties(value.specialties, name);
 
   if (!ID_PATTERN.test(id)) {
     throw new UserFacingError(`Agent id "${id}" is not a safe id.`);
@@ -92,9 +99,34 @@ function parseAgent(value: unknown, index: number): AgentConfig {
   if (!isProviderId(provider)) {
     throw new UserFacingError(`Agent "${name}" uses unsupported provider "${provider}".`);
   }
-  const draft: AgentDraft = { name, provider, cwd, command };
+  const draft: AgentDraft = { name, provider, cwd, command, specialties };
   validateDraft(draft);
-  return { id, name: name.trim(), provider, instructionsFile, cwd, ...(command ? { command } : {}) };
+  return {
+    id,
+    name: name.trim(),
+    provider,
+    instructionsFile,
+    cwd,
+    ...(specialties.length > 0 ? { specialties } : {}),
+    ...(command ? { command } : {}),
+  };
+}
+
+function readSpecialties(value: unknown, agentName: string): string[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new UserFacingError(`Agent "${agentName}" has invalid specialties.`);
+  }
+  const specialties: string[] = [];
+  for (const specialty of value as unknown[]) {
+    if (typeof specialty !== 'string') {
+      throw new UserFacingError(`Agent "${agentName}" has invalid specialties.`);
+    }
+    specialties.push(specialty.trim());
+  }
+  return specialties;
 }
 
 function readString(value: Record<string, unknown>, key: string, index: number): string {
