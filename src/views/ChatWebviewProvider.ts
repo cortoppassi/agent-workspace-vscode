@@ -6,8 +6,10 @@ import type { AgentConfig } from '../config/types';
 import { UserFacingError } from '../config/validation';
 
 interface WebviewMessage {
-  readonly type: 'send' | 'interrupt';
+  readonly type: 'send' | 'interrupt' | 'selectModel';
   readonly text?: string;
+  readonly model?: string;
+  readonly effort?: string;
 }
 
 export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -36,6 +38,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
           this.update();
         }
       }),
+      chats.onDidChangeModels(() => this.update()),
       agents.onDidChange(() => {
         if (this.selectedAgentId && !agents.list().some((agent) => agent.id === this.selectedAgentId)) {
           chats.forgetAgent(this.selectedAgentId);
@@ -105,6 +108,13 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
         showChatError(error),
       );
     }
+    if (message.type === 'selectModel' && message.model) {
+      try {
+        this.chats.setConversationModel(agent.id, conversationId, message.model, message.effort);
+      } catch (error: unknown) {
+        void showChatError(error);
+      }
+    }
   }
 
   private update(): void {
@@ -140,11 +150,18 @@ function parseWebviewMessage(value: unknown): WebviewMessage | undefined {
     return undefined;
   }
   const type = value.type;
-  if (type !== 'send' && type !== 'interrupt') {
+  if (type !== 'send' && type !== 'interrupt' && type !== 'selectModel') {
     return undefined;
   }
   const text = 'text' in value && typeof value.text === 'string' ? value.text : undefined;
-  return { type, ...(text ? { text } : {}) };
+  const model = 'model' in value && typeof value.model === 'string' ? value.model : undefined;
+  const effort = 'effort' in value && typeof value.effort === 'string' ? value.effort : undefined;
+  return {
+    type,
+    ...(text ? { text } : {}),
+    ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
+  };
 }
 
 function showChatError(error: unknown): Thenable<string | undefined> {
@@ -167,45 +184,76 @@ function renderHtml(): string {
     #app { display: flex; flex-direction: column; height: 100vh; min-height: 180px; }
     #empty { margin: auto; padding: 20px; color: var(--vscode-descriptionForeground); text-align: center; line-height: 1.5; }
     #chat { display: none; flex: 1; min-height: 0; flex-direction: column; }
-    #messages { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 10px 6px; }
+    #settings { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; padding: 8px 10px; border-bottom: 1px solid var(--vscode-widget-border); }
+    .setting { flex: 1 1 110px; min-width: 0; }
+    #settings label { display: block; margin: 0 0 3px 1px; color: var(--vscode-descriptionForeground); font-size: 0.82em; }
+    #settings select { min-width: 0; width: 100%; height: 28px; padding: 3px 22px 3px 7px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; font: inherit; }
+    #settings select:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+    #model-status { display: none; flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: 0.82em; line-height: 1.35; }
+    #messages { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 10px 8px; }
     #welcome { display: grid; height: 100%; min-height: 140px; place-content: center; padding: 20px; color: var(--vscode-descriptionForeground); text-align: center; line-height: 1.5; }
     #welcome strong { margin-bottom: 4px; color: var(--vscode-foreground); font-size: 1.05em; }
-    .message { margin: 0 0 10px; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
-    .user { margin-left: 18px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
-    .assistant { margin-right: 10px; background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); }
-    .role { display: block; margin-bottom: 4px; color: var(--vscode-descriptionForeground); font-size: 0.85em; font-weight: 600; }
-    #usage { display: none; grid-template-columns: auto 1fr; gap: 2px 10px; padding: 7px 10px; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-widget-border); font-size: 0.9em; }
-    #usage-total { color: var(--vscode-foreground); font-weight: 600; text-align: right; }
-    #usage-detail { grid-column: 1 / -1; overflow-wrap: anywhere; }
+    .message { max-width: 96%; margin: 0 0 14px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+    .user { width: fit-content; margin-left: auto; padding: 8px 10px; background: var(--vscode-editor-inactiveSelectionBackground); border: 1px solid var(--vscode-widget-border); border-radius: 7px 7px 2px 7px; }
+    .assistant { padding: 2px 8px 2px 10px; border-left: 2px solid var(--vscode-textLink-foreground); }
+    .role { display: block; margin-bottom: 4px; color: var(--vscode-descriptionForeground); font-size: 0.82em; font-weight: 600; }
+    #usage { display: none; padding: 6px 10px; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-widget-border); font-size: 0.86em; }
+    #usage-summary { display: flex; gap: 6px; align-items: center; min-height: 22px; }
+    #usage-total { color: var(--vscode-foreground); font-weight: 600; }
+    #usage-detail { padding: 4px 0 2px; overflow-wrap: anywhere; line-height: 1.4; }
+    #usage-toggle { margin-left: auto; padding: 2px 0; color: var(--vscode-textLink-foreground); background: transparent; }
+    #usage-toggle:hover { color: var(--vscode-textLink-activeForeground); background: transparent; text-decoration: underline; }
+    [hidden] { display: none !important; }
     #error { display: none; margin: 0 10px 8px; padding: 8px 10px; color: var(--vscode-errorForeground); background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); border-radius: 4px; line-height: 1.4; }
     #composer { padding: 8px 10px 10px; border-top: 1px solid var(--vscode-widget-border); background: var(--vscode-sideBar-background); }
-    textarea { display: block; width: 100%; min-height: 50px; max-height: 140px; resize: vertical; padding: 8px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; font: inherit; }
-    textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-    #actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 7px; }
-    button { padding: 4px 11px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 2px; font: inherit; cursor: pointer; }
+    #composer-surface { background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 6px; }
+    #composer-surface:focus-within { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+    textarea { display: block; width: 100%; height: 58px; min-height: 42px; max-height: 150px; resize: none; overflow-y: auto; padding: 9px 9px 4px; color: var(--vscode-input-foreground); background: transparent; border: 0; font: inherit; line-height: 1.4; }
+    textarea:focus { outline: 0; }
+    #actions { display: flex; justify-content: flex-end; gap: 6px; align-items: center; padding: 4px 5px 5px 9px; }
+    #shortcut { margin-right: auto; color: var(--vscode-descriptionForeground); font-size: 0.78em; }
+    button { min-height: 26px; padding: 4px 11px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 3px; font: inherit; cursor: pointer; }
     button:hover { background: var(--vscode-button-hoverBackground); }
     button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-    button:disabled, textarea:disabled { opacity: 0.6; cursor: default; }
-    #working { display: none; margin-right: auto; align-self: center; color: var(--vscode-descriptionForeground); }
+    button:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: default; }
+    #working { display: none; min-width: 0; margin-right: auto; overflow: hidden; align-self: center; color: var(--vscode-descriptionForeground); text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 230px) { #shortcut { display: none; } }
   </style>
 </head>
 <body>
   <main id="app">
     <div id="empty">Select a Codex agent above to open its chat.</div>
     <section id="chat">
+      <div id="settings">
+        <div class="setting">
+          <label for="model">Model</label>
+          <select id="model" aria-label="Model"></select>
+        </div>
+        <div class="setting">
+          <label for="effort">Reasoning</label>
+          <select id="effort" aria-label="Reasoning effort"></select>
+        </div>
+        <span id="model-status"></span>
+      </div>
       <div id="messages" aria-live="polite"></div>
-      <div id="usage" title="Token usage for this agent's current chat">
-        <span>Usage</span>
-        <span id="usage-total"></span>
-        <span id="usage-detail"></span>
+      <div id="usage" title="Token usage for this conversation">
+        <div id="usage-summary">
+          <span>Conversation usage</span>
+          <span id="usage-total"></span>
+          <button id="usage-toggle" type="button" aria-expanded="false" aria-controls="usage-detail">Details</button>
+        </div>
+        <div id="usage-detail" hidden></div>
       </div>
       <div id="error" role="alert"></div>
       <form id="composer">
-        <textarea id="input" aria-label="Message" placeholder="Send a task to this agent..."></textarea>
-        <div id="actions">
-          <span id="working">Codex is working...</span>
-          <button id="stop" class="secondary" type="button">Stop</button>
-          <button id="send" type="submit">Send</button>
+        <div id="composer-surface">
+          <textarea id="input" aria-label="Message" placeholder="Describe a task for this agent..."></textarea>
+          <div id="actions">
+            <span id="shortcut">Enter to send</span>
+            <span id="working" role="status">Codex is working...</span>
+            <button id="stop" class="secondary" type="button">Stop</button>
+            <button id="send" type="submit">Send</button>
+          </div>
         </div>
       </form>
     </section>
@@ -216,15 +264,22 @@ function renderHtml(): string {
     const chat = document.getElementById('chat');
     const messages = document.getElementById('messages');
     const error = document.getElementById('error');
+    const model = document.getElementById('model');
+    const effort = document.getElementById('effort');
+    const modelStatus = document.getElementById('model-status');
     const usage = document.getElementById('usage');
     const usageTotal = document.getElementById('usage-total');
     const usageDetail = document.getElementById('usage-detail');
+    const usageToggle = document.getElementById('usage-toggle');
     const form = document.getElementById('composer');
     const input = document.getElementById('input');
     const send = document.getElementById('send');
     const stop = document.getElementById('stop');
+    const shortcut = document.getElementById('shortcut');
     const working = document.getElementById('working');
     let currentConversationId;
+    let currentModels = [];
+    let usageExpanded = false;
 
     window.addEventListener('message', (event) => {
       const payload = event.data;
@@ -237,12 +292,26 @@ function renderHtml(): string {
         chat.style.display = 'none';
         return;
       }
+      const previousScrollTop = messages.scrollTop;
+      const followLatest = currentConversationId !== conversation.id
+        || messages.scrollHeight - messages.scrollTop - messages.clientHeight < 48;
       if (currentConversationId !== conversation.id) {
         currentConversationId = conversation.id;
         input.value = '';
+        resizeInput();
+        usageExpanded = false;
+        updateUsageDisclosure();
       }
       empty.style.display = 'none';
       chat.style.display = 'flex';
+      currentModels = state.models || [];
+      renderModels(state.model, state.reasoningEffort);
+      const settingsDisabled = state.busy || state.modelsLoading || currentModels.length === 0;
+      model.disabled = settingsDisabled;
+      effort.disabled = settingsDisabled || effort.options.length === 0;
+      modelStatus.textContent = state.modelsError
+        || (state.modelsLoading ? 'Loading available models...' : currentModels.length === 0 ? 'No models available.' : '');
+      modelStatus.style.display = modelStatus.textContent ? 'block' : 'none';
       messages.replaceChildren();
       for (const message of state.messages) {
         const item = document.createElement('article');
@@ -258,7 +327,7 @@ function renderHtml(): string {
       error.textContent = state.error || '';
       error.style.display = state.error ? 'block' : 'none';
       if (state.usage) {
-        usage.style.display = 'grid';
+        usage.style.display = 'block';
         usageTotal.textContent = formatTokens(state.usage.totalTokens) + ' tokens';
         const usageParts = [
           formatTokens(state.usage.inputTokens) + ' input',
@@ -302,8 +371,9 @@ function renderHtml(): string {
       stop.style.display = state.busy ? 'block' : 'none';
       working.textContent = state.busy ? 'Codex is working…' : !state.ready && !state.error && supported ? 'Starting Codex…' : '';
       working.style.display = working.textContent ? 'inline' : 'none';
-      input.placeholder = supported ? 'Send a task to this agent...' : 'Embedded chat currently supports Codex agents only.';
-      messages.scrollTop = messages.scrollHeight;
+      shortcut.style.display = working.textContent ? 'none' : '';
+      input.placeholder = supported ? 'Describe a task for this agent...' : 'Embedded chat currently supports Codex agents only.';
+      messages.scrollTop = followLatest ? messages.scrollHeight : previousScrollTop;
     });
 
     form.addEventListener('submit', (event) => {
@@ -312,6 +382,7 @@ function renderHtml(): string {
       if (!text) return;
       vscode.postMessage({ type: 'send', text });
       input.value = '';
+      resizeInput();
     });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) {
@@ -319,7 +390,73 @@ function renderHtml(): string {
         form.requestSubmit();
       }
     });
+    input.addEventListener('input', resizeInput);
     stop.addEventListener('click', () => vscode.postMessage({ type: 'interrupt' }));
+    usageToggle.addEventListener('click', () => {
+      usageExpanded = !usageExpanded;
+      updateUsageDisclosure();
+    });
+    model.addEventListener('change', () => {
+      const selectedModel = currentModels.find((candidate) => candidate.model === model.value);
+      renderEfforts(selectedModel, selectedModel && selectedModel.defaultReasoningEffort);
+      postModelSelection();
+    });
+    effort.addEventListener('change', postModelSelection);
+
+    function postModelSelection() {
+      if (!model.value) return;
+      vscode.postMessage({ type: 'selectModel', model: model.value, effort: effort.value || undefined });
+    }
+
+    function renderModels(selectedModel, selectedEffort) {
+      model.replaceChildren();
+      for (const candidate of currentModels) {
+        const option = document.createElement('option');
+        option.value = candidate.model;
+        option.textContent = candidate.displayName;
+        model.append(option);
+      }
+      if (selectedModel && !currentModels.some((candidate) => candidate.model === selectedModel)) {
+        const unavailable = document.createElement('option');
+        unavailable.value = selectedModel;
+        unavailable.textContent = selectedModel + ' (unavailable)';
+        unavailable.disabled = true;
+        model.append(unavailable);
+      }
+      model.value = selectedModel || '';
+      renderEfforts(
+        currentModels.find((candidate) => candidate.model === model.value),
+        selectedEffort,
+      );
+    }
+
+    function renderEfforts(selectedModel, selectedEffort) {
+      effort.replaceChildren();
+      if (!selectedModel) return;
+      for (const candidate of selectedModel.supportedReasoningEfforts) {
+        const option = document.createElement('option');
+        option.value = candidate.reasoningEffort;
+        option.textContent = capitalize(candidate.reasoningEffort);
+        option.title = candidate.description || '';
+        effort.append(option);
+      }
+      effort.value = selectedEffort || selectedModel.defaultReasoningEffort || '';
+    }
+
+    function capitalize(value) {
+      return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+    }
+
+    function updateUsageDisclosure() {
+      usageDetail.hidden = !usageExpanded;
+      usageToggle.textContent = usageExpanded ? 'Hide' : 'Details';
+      usageToggle.setAttribute('aria-expanded', String(usageExpanded));
+    }
+
+    function resizeInput() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(Math.max(input.scrollHeight, 42), 150) + 'px';
+    }
 
     function formatTokens(value) {
       return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);

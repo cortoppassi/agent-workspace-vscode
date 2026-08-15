@@ -53,6 +53,31 @@ void test('readStoredConversations rejects malformed records', () => {
   );
 });
 
+void test('readStoredConversations preserves model selection', () => {
+  assert.deepEqual(
+    readStoredConversations([
+      {
+        id: 'one',
+        agentId: 'agent',
+        title: 'Model test',
+        model: 'model-slug',
+        reasoningEffort: 'high',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ]),
+    [{
+      id: 'one',
+      agentId: 'agent',
+      title: 'Model test',
+      model: 'model-slug',
+      reasoningEffort: 'high',
+      createdAt: 1,
+      updatedAt: 2,
+    }],
+  );
+});
+
 void test('titleFromFirstMessage creates a compact single-line title', () => {
   assert.equal(titleFromFirstMessage('  Fix   the\nlogin flow  '), 'Fix the login flow');
   assert.equal(titleFromFirstMessage('x'.repeat(60)), `${'x'.repeat(47)}…`);

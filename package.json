@@ -173,6 +173,11 @@
           "group": "inline@2"
         },
         {
+          "command": "agentWorkspace.openInstructions",
+          "when": "view == agentWorkspace.agents && viewItem =~ /Agent/",
+          "group": "inline@3"
+        },
+        {
           "command": "agentWorkspace.startAgent",
           "when": "view == agentWorkspace.agents && viewItem =~ /AgentStopped$/",
           "group": "1_manage@1"

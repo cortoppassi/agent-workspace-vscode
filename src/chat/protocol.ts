@@ -26,6 +26,24 @@ export interface TokenUsageBreakdown {
   readonly totalTokens: number;
 }
 
+export interface CodexReasoningEffort {
+  readonly reasoningEffort: string;
+  readonly description?: string;
+}
+
+export interface CodexModel {
+  readonly model: string;
+  readonly displayName: string;
+  readonly defaultReasoningEffort?: string;
+  readonly supportedReasoningEfforts: readonly CodexReasoningEffort[];
+  readonly isDefault: boolean;
+}
+
+export interface CodexModelPage {
+  readonly models: readonly CodexModel[];
+  readonly nextCursor?: string;
+}
+
 export function parseJsonRpcLine(line: string): JsonRpcMessage | undefined {
   let value: unknown;
   try {
@@ -119,6 +137,38 @@ export function readTokenUsageBreakdown(value: unknown): TokenUsageBreakdown | u
     reasoningOutputTokens,
     totalTokens,
   };
+}
+
+export function readCodexModelPage(value: unknown): CodexModelPage {
+  const record = readRecord(value);
+  const data = Array.isArray(record?.data) ? record.data : [];
+  const models = data.flatMap((entry) => {
+    const modelRecord = readRecord(entry);
+    const model = readString(modelRecord, 'model') ?? readString(modelRecord, 'id');
+    if (!model) {
+      return [];
+    }
+    const defaultReasoningEffort = readString(modelRecord, 'defaultReasoningEffort');
+    const efforts = Array.isArray(modelRecord?.supportedReasoningEfforts)
+      ? modelRecord.supportedReasoningEfforts.flatMap((candidate) => {
+          const effortRecord = readRecord(candidate);
+          const reasoningEffort = readString(effortRecord, 'reasoningEffort');
+          const description = readString(effortRecord, 'description');
+          return reasoningEffort
+            ? [{ reasoningEffort, ...(description ? { description } : {}) }]
+            : [];
+        })
+      : [];
+    return [{
+      model,
+      displayName: readString(modelRecord, 'displayName') ?? model,
+      supportedReasoningEfforts: efforts,
+      isDefault: modelRecord?.isDefault === true,
+      ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
+    }];
+  });
+  const nextCursor = readString(record, 'nextCursor');
+  return { models, ...(nextCursor ? { nextCursor } : {}) };
 }
 
 function readTokenCount(value: unknown, key: string): number | undefined {

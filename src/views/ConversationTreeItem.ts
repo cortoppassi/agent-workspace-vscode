@@ -12,7 +12,8 @@ export class ConversationTreeItem extends vscode.TreeItem {
   ) {
     super(conversation.title, vscode.TreeItemCollapsibleState.None);
     this.id = conversation.id;
-    this.description = conversation.usage ? formatTokenCount(conversation.usage.totalTokens) : undefined;
+    const usage = conversation.usage ? formatTokenCount(conversation.usage.totalTokens) : undefined;
+    this.description = [active ? 'Active' : undefined, usage].filter(Boolean).join(' · ') || undefined;
     this.tooltip = new vscode.MarkdownString(
       `**${conversation.title}**\n\nUpdated: ${new Date(conversation.updatedAt).toLocaleString()}${conversation.usage ? `\n\nToken usage: ${conversation.usage.totalTokens.toLocaleString()}` : ''}`,
     );

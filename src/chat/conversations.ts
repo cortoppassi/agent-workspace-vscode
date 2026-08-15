@@ -7,6 +7,8 @@ export interface ConversationConfig {
   readonly agentId: string;
   readonly title: string;
   readonly threadId?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly usage?: TokenUsageBreakdown;
@@ -27,8 +29,20 @@ export function readStoredConversations(value: unknown): ConversationConfig[] {
       return [];
     }
     const threadId = readString(record, 'threadId');
+    const model = readString(record, 'model');
+    const reasoningEffort = readString(record, 'reasoningEffort');
     const usage = readTokenUsageBreakdown(record?.usage);
-    return [{ id, agentId, title, createdAt, updatedAt, ...(threadId ? { threadId } : {}), ...(usage ? { usage } : {}) }];
+    return [{
+      id,
+      agentId,
+      title,
+      createdAt,
+      updatedAt,
+      ...(threadId ? { threadId } : {}),
+      ...(model ? { model } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(usage ? { usage } : {}),
+    }];
   });
 }
 

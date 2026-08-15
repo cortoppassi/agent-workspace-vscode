@@ -14,10 +14,12 @@ import {
 } from './conversations';
 import {
   extractChatHistory,
+  readCodexModelPage,
   readRecord,
   readString,
   readTokenUsageBreakdown,
   type ChatHistoryMessage,
+  type CodexModel,
   type JsonRpcMessage,
   type TokenUsageBreakdown,
 } from './protocol';
@@ -35,6 +37,11 @@ export interface ChatState {
   readonly messages: readonly ChatMessage[];
   readonly ready: boolean;
   readonly busy: boolean;
+  readonly models: readonly CodexModel[];
+  readonly modelsLoading: boolean;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly modelsError?: string;
   readonly usage?: TokenUsageBreakdown;
   readonly error?: string;
 }
@@ -64,14 +71,20 @@ interface TurnResponse {
 export class ChatSessionManager implements vscode.Disposable {
   private readonly changedEmitter = new vscode.EventEmitter<string>();
   private readonly conversationsChangedEmitter = new vscode.EventEmitter<string>();
+  private readonly modelsChangedEmitter = new vscode.EventEmitter<void>();
   private readonly sessions = new Map<string, MutableChatSession>();
   private readonly client: CodexAppServerClient;
   private readonly notificationSubscription: { dispose(): void };
   private conversations: ConversationConfig[];
   private activeConversationIds: Record<string, string>;
+  private models: CodexModel[] = [];
+  private modelsLoading: Promise<void> | undefined;
+  private modelsLoaded = false;
+  private modelsError: string | undefined;
 
   public readonly onDidChange = this.changedEmitter.event;
   public readonly onDidChangeConversations = this.conversationsChangedEmitter.event;
+  public readonly onDidChangeModels = this.modelsChangedEmitter.event;
 
   public constructor(
     private readonly agents: AgentManager,
@@ -124,10 +137,19 @@ export class ChatSessionManager implements vscode.Disposable {
   public getState(conversationId: string): ChatState {
     const session = this.session(conversationId);
     const conversation = this.conversations.find((candidate) => candidate.id === conversationId);
+    const defaultModel = this.models.find((model) => model.isDefault) ?? this.models[0];
+    const selectedModel = conversation?.model ?? defaultModel?.model;
+    const selectedModelMetadata = this.models.find((model) => model.model === selectedModel);
+    const selectedReasoningEffort = conversation?.reasoningEffort ?? selectedModelMetadata?.defaultReasoningEffort;
     return {
       messages: [...session.messages],
       ready: session.loaded,
       busy: session.busy,
+      models: [...this.models],
+      modelsLoading: this.modelsLoading !== undefined,
+      ...(selectedModel ? { model: selectedModel } : {}),
+      ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
+      ...(this.modelsError ? { modelsError: this.modelsError } : {}),
       ...(conversation?.usage ? { usage: conversation.usage } : {}),
       ...(session.error ? { error: session.error } : {}),
     };
@@ -182,6 +204,33 @@ export class ChatSessionManager implements vscode.Disposable {
     }
   }
 
+  public setConversationModel(
+    agentId: string,
+    conversationId: string,
+    modelId: string,
+    reasoningEffort?: string,
+  ): void {
+    const conversation = this.requireConversation(agentId, conversationId);
+    if (this.isBusy(conversationId)) {
+      throw new UserFacingError('Stop the active response before changing its model.');
+    }
+    const model = this.models.find((candidate) => candidate.model === modelId);
+    if (!model) {
+      throw new UserFacingError('The selected model is no longer available.');
+    }
+    if (
+      reasoningEffort
+      && !model.supportedReasoningEfforts.some((candidate) => candidate.reasoningEffort === reasoningEffort)
+    ) {
+      throw new UserFacingError('The selected reasoning effort is not supported by this model.');
+    }
+    this.replaceConversation({
+      ...conversation,
+      model: model.model,
+      reasoningEffort: reasoningEffort ?? model.defaultReasoningEffort,
+    });
+  }
+
   public async deleteConversation(agentId: string, conversationId: string): Promise<void> {
     const conversation = this.requireConversation(agentId, conversationId);
     if (this.isBusy(conversationId)) {
@@ -226,13 +275,15 @@ export class ChatSessionManager implements vscode.Disposable {
     if (agent.provider !== 'codex') {
       return;
     }
+    const modelsLoading = this.ensureModels();
     this.requireConversation(agent.id, conversationId);
     const session = this.session(conversationId);
     if (session.loaded) {
+      await modelsLoading;
       return;
     }
     if (session.loading) {
-      await session.loading;
+      await Promise.all([modelsLoading, session.loading]);
       return;
     }
     session.error = undefined;
@@ -245,7 +296,7 @@ export class ChatSessionManager implements vscode.Disposable {
       .finally(() => {
         session.loading = undefined;
       });
-    await session.loading;
+    await Promise.all([modelsLoading, session.loading]);
   }
 
   public async send(agent: AgentConfig, conversationId: string, text: string): Promise<void> {
@@ -287,6 +338,8 @@ export class ChatSessionManager implements vscode.Disposable {
         threadId: session.threadId,
         clientUserMessageId: userMessage.id,
         input: [{ type: 'text', text: prompt, text_elements: [] }],
+        ...(conversation.model ? { model: conversation.model } : {}),
+        ...(conversation.reasoningEffort ? { effort: conversation.reasoningEffort } : {}),
       });
       const turnId = response.turn?.id;
       if (!turnId) {
@@ -316,6 +369,7 @@ export class ChatSessionManager implements vscode.Disposable {
     this.client.dispose();
     this.changedEmitter.dispose();
     this.conversationsChangedEmitter.dispose();
+    this.modelsChangedEmitter.dispose();
   }
 
   private async ensureThread(
@@ -362,6 +416,7 @@ export class ChatSessionManager implements vscode.Disposable {
       sandbox: 'workspace-write',
       developerInstructions,
       serviceName: 'agent_workspace',
+      ...(conversation.model ? { model: conversation.model } : {}),
     });
     const threadId = started.thread?.id;
     if (!threadId) {
@@ -522,6 +577,42 @@ export class ChatSessionManager implements vscode.Disposable {
     void this.client.request('thread/name/set', { threadId, name }).catch((error: unknown) => {
       this.output.appendLine(`[chat] Could not set thread name: ${readableError(error)}`);
     });
+  }
+
+  private async ensureModels(): Promise<void> {
+    if (this.modelsLoaded) {
+      return;
+    }
+    if (!this.modelsLoading) {
+      this.modelsError = undefined;
+      this.modelsLoading = this.loadModels()
+        .catch((error: unknown) => {
+          this.modelsError = 'Model selection is unavailable. Codex will use its default model.';
+          this.output.appendLine(`[chat] Could not list models: ${readableError(error)}`);
+        })
+        .finally(() => {
+          this.modelsLoading = undefined;
+          this.modelsChangedEmitter.fire();
+        });
+      this.modelsChangedEmitter.fire();
+    }
+    await this.modelsLoading;
+  }
+
+  private async loadModels(): Promise<void> {
+    const models: CodexModel[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = readCodexModelPage(await this.client.request('model/list', {
+        limit: 100,
+        includeHidden: false,
+        ...(cursor ? { cursor } : {}),
+      }));
+      models.push(...page.models);
+      cursor = page.nextCursor;
+    } while (cursor);
+    this.models = models;
+    this.modelsLoaded = true;
   }
 
   private persistConversations(): Thenable<void> {

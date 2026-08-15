@@ -26,9 +26,10 @@ In the Extension Development Host, open the project where agents should be confi
 5. Click the agent to open its current embedded conversation and send a message.
 6. Expand the agent and select **New Conversation** to start another independent conversation.
 7. Select a conversation from the list to reopen its history; use its context menu to rename or remove it.
-8. Verify that each conversation shows its own token usage and that the agent shows their combined usage.
-9. Use **Start** from the agent actions or context menu when you want an interactive terminal named `Backend`.
-10. Create more agents and verify that each has independent instructions, conversations, terminal, and status.
+8. Use the compact chat selectors to choose an available Codex model and reasoning effort for that conversation.
+9. Expand **Details** below the chat to inspect that conversation's token usage; the agent row shows the combined total.
+10. Use **Start** from the agent actions or context menu when you want an interactive terminal named `Backend`.
+11. Create more agents and verify that each has independent instructions, conversations, terminal, and status.
 
 The extension assumes `codex` is installed, authenticated, and available on `PATH`.
 
