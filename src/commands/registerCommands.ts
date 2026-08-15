@@ -37,6 +37,9 @@ export function registerCommands(context: vscode.ExtensionContext, services: Com
 
   register('agentWorkspace.refresh', async () => agents.reload());
 
+  register('agentWorkspace.enableEconomyMode', async () => chatView.setEconomyMode(true));
+  register('agentWorkspace.disableEconomyMode', async () => chatView.setEconomyMode(false));
+
   register('agentWorkspace.openChat', async (value) => {
     const agent = await resolveAgent(value, agents);
     if (agent) {
@@ -213,6 +216,22 @@ async function promptForAgent(existing?: AgentConfig): Promise<AgentDraft | unde
     return undefined;
   }
 
+  let specialties: string[] = [];
+  if (provider === 'codex') {
+    const specialtiesInput = await vscode.window.showInputBox({
+      title: existing ? 'Edit Agent: Specialties' : 'Create Agent: Specialties',
+      prompt: 'Comma-separated areas used by Modo Economia, such as frontend, React, CSS, or testing',
+      value: existing?.specialties?.join(', '),
+      placeHolder: 'frontend, React, CSS',
+      ignoreFocusOut: true,
+      validateInput: validateSpecialtiesInput,
+    });
+    if (specialtiesInput === undefined) {
+      return undefined;
+    }
+    specialties = specialtiesInput.split(',').map((specialty) => specialty.trim()).filter(Boolean);
+  }
+
   let command: string | undefined;
   if (provider === 'custom') {
     command = await vscode.window.showInputBox({
@@ -226,7 +245,23 @@ async function promptForAgent(existing?: AgentConfig): Promise<AgentDraft | unde
       return undefined;
     }
   }
-  return { name, provider, cwd, ...(command ? { command } : {}) };
+  return {
+    name,
+    provider,
+    cwd,
+    ...(specialties.length > 0 ? { specialties } : {}),
+    ...(command ? { command } : {}),
+  };
+}
+
+function validateSpecialtiesInput(value: string): string | undefined {
+  const specialties = value.split(',').map((specialty) => specialty.trim()).filter(Boolean);
+  if (specialties.length > 12) {
+    return 'Use at most 12 specialties.';
+  }
+  return specialties.some((specialty) => specialty.length > 40)
+    ? 'Each specialty must contain at most 40 characters.'
+    : undefined;
 }
 
 async function resolveAgent(value: unknown, manager: AgentManager): Promise<AgentConfig | undefined> {

@@ -27,6 +27,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const chats = new ChatSessionManager(agents, context.workspaceState, output);
   const treeProvider = new AgentTreeProvider(agents, terminals, providers, chats);
   const chatView = new ChatWebviewProvider(agents, chats);
+  await vscode.commands.executeCommand('setContext', 'agentWorkspace.economyModeActive', false);
 
   context.subscriptions.push(
     agents,
@@ -72,8 +73,12 @@ async function registerWithoutWorkspace(context: vscode.ExtensionContext): Promi
     vscode.window.registerWebviewViewProvider(ChatWebviewProvider.viewType, new EmptyChatWebviewProvider()),
   );
   await vscode.commands.executeCommand('setContext', 'agentWorkspace.hasAgents', false);
+  await vscode.commands.executeCommand('setContext', 'agentWorkspace.hasCodexAgents', false);
+  await vscode.commands.executeCommand('setContext', 'agentWorkspace.economyModeActive', false);
   const commandIds = [
     'agentWorkspace.createAgent',
+    'agentWorkspace.enableEconomyMode',
+    'agentWorkspace.disableEconomyMode',
     'agentWorkspace.refresh',
     'agentWorkspace.openChat',
     'agentWorkspace.newConversation',

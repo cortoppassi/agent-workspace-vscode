@@ -1,7 +1,7 @@
 {
   "name": "agent-workspace",
   "displayName": "Agent Workspace",
-  "description": "Manage multiple CLI coding agents in a VS Code workspace.",
+  "description": "Use AI to route coding tasks to specialized local agents with explainable cost-aware decisions.",
   "version": "0.1.0",
   "publisher": "local",
   "license": "MIT",
@@ -47,7 +47,8 @@
         {
           "id": "agentWorkspace.agents",
           "name": "Agents",
-          "icon": "$(hubot)"
+          "icon": "$(hubot)",
+          "when": "!agentWorkspace.economyModeActive"
         },
         {
           "id": "agentWorkspace.chat",
@@ -71,6 +72,18 @@
         "title": "Create Agent",
         "category": "Agent Workspace",
         "icon": "$(add)"
+      },
+      {
+        "command": "agentWorkspace.enableEconomyMode",
+        "title": "Ativar Modo Economia",
+        "category": "Agent Workspace",
+        "icon": "$(circle-large-outline)"
+      },
+      {
+        "command": "agentWorkspace.disableEconomyMode",
+        "title": "Desativar Modo Economia",
+        "category": "Agent Workspace",
+        "icon": "$(circle-large-filled)"
       },
       {
         "command": "agentWorkspace.refresh",
@@ -144,16 +157,36 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "agentWorkspace.enableEconomyMode",
+          "when": "agentWorkspace.hasCodexAgents && !agentWorkspace.economyModeActive"
+        },
+        {
+          "command": "agentWorkspace.disableEconomyMode",
+          "when": "agentWorkspace.economyModeActive"
+        }
+      ],
       "view/title": [
+        {
+          "command": "agentWorkspace.enableEconomyMode",
+          "when": "view == agentWorkspace.agents && agentWorkspace.hasCodexAgents && !agentWorkspace.economyModeActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentWorkspace.disableEconomyMode",
+          "when": "view == agentWorkspace.chat && agentWorkspace.economyModeActive",
+          "group": "navigation@1"
+        },
         {
           "command": "agentWorkspace.createAgent",
           "when": "view == agentWorkspace.agents",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "agentWorkspace.refresh",
           "when": "view == agentWorkspace.agents",
-          "group": "navigation@2"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -171,6 +204,11 @@
           "command": "agentWorkspace.newConversation",
           "when": "view == agentWorkspace.agents && viewItem =~ /^codexAgent/",
           "group": "inline@2"
+        },
+        {
+          "command": "agentWorkspace.openInstructions",
+          "when": "view == agentWorkspace.agents && viewItem =~ /Agent/",
+          "group": "inline@3"
         },
         {
           "command": "agentWorkspace.startAgent",

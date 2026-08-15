@@ -17,6 +17,10 @@ export class AgentManager implements vscode.Disposable {
 
   public constructor(private readonly configManager: ConfigManager) {}
 
+  public get workspaceRoot(): string {
+    return this.configManager.workspaceRoot;
+  }
+
   public dispose(): void {
     this.changedEmitter.dispose();
   }
@@ -47,6 +51,7 @@ export class AgentManager implements vscode.Disposable {
       provider: normalizedDraft.provider,
       instructionsFile: `.agent-workspace/agents/${id}.md`,
       cwd: normalizedDraft.cwd,
+      ...(normalizedDraft.specialties?.length ? { specialties: normalizedDraft.specialties } : {}),
       ...(normalizedDraft.command ? { command: normalizedDraft.command } : {}),
     };
 
@@ -78,6 +83,9 @@ export class AgentManager implements vscode.Disposable {
       name: normalizedDraft.name,
       provider: normalizedDraft.provider,
       cwd: normalizedDraft.cwd,
+      ...(normalizedDraft.specialties?.length
+        ? { specialties: normalizedDraft.specialties }
+        : { specialties: undefined }),
       ...(normalizedDraft.command ? { command: normalizedDraft.command } : { command: undefined }),
     };
     const next = [...this.agents];
@@ -97,6 +105,29 @@ export class AgentManager implements vscode.Disposable {
     return agent;
   }
 
+  public async setModelSelection(
+    id: string,
+    model: string,
+    reasoningEffort?: string,
+  ): Promise<AgentConfig> {
+    const index = this.agents.findIndex((agent) => agent.id === id);
+    const existing = this.agents[index];
+    if (!existing) {
+      throw new UserFacingError('The selected agent no longer exists.');
+    }
+    const updated: AgentConfig = {
+      ...existing,
+      model,
+      ...(reasoningEffort ? { reasoningEffort } : { reasoningEffort: undefined }),
+    };
+    const next = [...this.agents];
+    next[index] = updated;
+    await this.configManager.save(next);
+    this.agents = next;
+    this.changedEmitter.fire();
+    return updated;
+  }
+
   public require(id: string): AgentConfig {
     const agent = this.agents.find((candidate) => candidate.id === id);
     if (!agent) {
@@ -107,6 +138,12 @@ export class AgentManager implements vscode.Disposable {
 
   public async validateFiles(agent: AgentConfig): Promise<void> {
     await this.configManager.validateAgentFiles(agent);
+  }
+
+  public async readInstructions(agent: AgentConfig): Promise<string> {
+    await this.configManager.validateAgentFiles(agent);
+    const contents = await vscode.workspace.fs.readFile(this.instructionsUri(agent));
+    return new TextDecoder().decode(contents);
   }
 
   public instructionsUri(agent: AgentConfig): vscode.Uri {
@@ -143,10 +180,14 @@ export class AgentManager implements vscode.Disposable {
 
 function normalizeDraft(draft: AgentDraft): AgentDraft {
   const command = draft.command?.trim();
+  const specialties = [...new Set(
+    draft.specialties?.map((specialty) => specialty.trim()).filter(Boolean),
+  )];
   return {
     name: draft.name.trim(),
     provider: draft.provider,
     cwd: normalizeRelativePath(draft.cwd),
+    ...(specialties.length > 0 ? { specialties } : {}),
     ...(command ? { command } : {}),
   };
 }

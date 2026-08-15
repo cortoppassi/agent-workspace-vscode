@@ -33,10 +33,34 @@ void test('parseWorkspaceConfig accepts version 1 config', () => {
         provider: 'codex',
         instructionsFile: '.agent-workspace/agents/backend.md',
         cwd: '.',
+        specialties: ['API', 'SQL'],
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'medium',
       },
     ],
   });
   assert.equal(config.agents[0]?.id, 'backend');
+  assert.deepEqual(config.agents[0]?.specialties, ['API', 'SQL']);
+  assert.equal(config.agents[0]?.model, 'gpt-5.6-terra');
+  assert.equal(config.agents[0]?.reasoningEffort, 'medium');
+});
+
+void test('agent specialties are optional and validated', () => {
+  assert.doesNotThrow(() => validateDraft({
+    name: 'Frontend',
+    provider: 'codex',
+    cwd: '.',
+    specialties: ['React', 'CSS'],
+  }));
+  assert.throws(
+    () => validateDraft({
+      name: 'Frontend',
+      provider: 'codex',
+      cwd: '.',
+      specialties: Array.from({ length: 13 }, (_, index) => `skill-${index}`),
+    }),
+    /at most 12 specialties/,
+  );
 });
 
 void test('parseWorkspaceConfig rejects duplicate ids and invalid providers', () => {

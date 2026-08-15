@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractChatHistory, parseJsonRpcLine, readTokenUsageBreakdown } from '../src/chat/protocol';
+import {
+  extractChatHistory,
+  parseJsonRpcLine,
+  readCodexModelPage,
+  readTokenUsageBreakdown,
+} from '../src/chat/protocol';
 
 void test('parseJsonRpcLine recognizes responses and notifications', () => {
   assert.deepEqual(parseJsonRpcLine('{"id":1,"result":{"thread":{"id":"thread-1"}}}'), {
@@ -75,4 +80,49 @@ void test('readTokenUsageBreakdown validates and normalizes token counts', () =>
   );
   assert.equal(readTokenUsageBreakdown({ inputTokens: -1 }), undefined);
   assert.equal(readTokenUsageBreakdown({}), undefined);
+});
+
+void test('readCodexModelPage reads visible model metadata and pagination', () => {
+  assert.deepEqual(
+    readCodexModelPage({
+      data: [
+        {
+          id: 'model-id',
+          model: 'model-slug',
+          displayName: 'Model Name',
+          defaultReasoningEffort: 'medium',
+          supportedReasoningEfforts: [
+            { reasoningEffort: 'low', description: 'Faster' },
+            { reasoningEffort: 'medium' },
+            { description: 'Invalid' },
+          ],
+          isDefault: true,
+        },
+        { id: 'fallback-id' },
+        { displayName: 'Invalid' },
+      ],
+      nextCursor: 'next-page',
+    }),
+    {
+      models: [
+        {
+          model: 'model-slug',
+          displayName: 'Model Name',
+          defaultReasoningEffort: 'medium',
+          supportedReasoningEfforts: [
+            { reasoningEffort: 'low', description: 'Faster' },
+            { reasoningEffort: 'medium' },
+          ],
+          isDefault: true,
+        },
+        {
+          model: 'fallback-id',
+          displayName: 'fallback-id',
+          supportedReasoningEfforts: [],
+          isDefault: false,
+        },
+      ],
+      nextCursor: 'next-page',
+    },
+  );
 });

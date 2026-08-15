@@ -12,9 +12,12 @@ export class ConversationTreeItem extends vscode.TreeItem {
   ) {
     super(conversation.title, vscode.TreeItemCollapsibleState.None);
     this.id = conversation.id;
-    this.description = conversation.usage ? formatTokenCount(conversation.usage.totalTokens) : undefined;
+    const usage = conversation.usage ? formatTokenCount(conversation.usage.totalTokens) : undefined;
+    this.description = [active ? 'Active' : undefined, conversation.dispatch ? 'Economy' : undefined, usage]
+      .filter(Boolean)
+      .join(' · ') || undefined;
     this.tooltip = new vscode.MarkdownString(
-      `**${conversation.title}**\n\nUpdated: ${new Date(conversation.updatedAt).toLocaleString()}${conversation.usage ? `\n\nToken usage: ${conversation.usage.totalTokens.toLocaleString()}` : ''}`,
+      `**${conversation.title}**\n\nUpdated: ${new Date(conversation.updatedAt).toLocaleString()}${conversation.dispatch ? `\n\nModo Economia: ${Math.round(conversation.dispatch.confidence * 100)}% de confiança declarada pela IA${conversation.dispatch.routerModel ? `\n\nModelo analisador: ${conversation.dispatch.routerModel}` : ''}\n\n${conversation.dispatch.agentReason}\n\n${conversation.dispatch.modelReason}` : ''}${conversation.usage ? `\n\nToken usage: ${conversation.usage.totalTokens.toLocaleString()}` : ''}`,
     );
     this.contextValue = 'conversation';
     this.iconPath = new vscode.ThemeIcon(

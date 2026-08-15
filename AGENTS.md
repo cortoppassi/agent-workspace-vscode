@@ -2,7 +2,7 @@
 
 ## Goal
 
-Keep the smallest functional VS Code extension that visually manages multiple independent CLI coding agents in one project.
+Keep the smallest functional local control plane that routes a coding task to one qualified CLI agent, recommends a cost-conscious model setup, and explains the decision before execution.
 
 ## Architecture
 
@@ -12,6 +12,7 @@ Keep the smallest functional VS Code extension that visually manages multiple in
 - `AgentProvider` implementations: launch intent, independent of terminal lifecycle.
 - `TerminalManager`: one VS Code terminal per running agent.
 - `AgentTreeProvider`: native Activity Bar TreeView presentation.
+- `TaskRouter`: deterministic local task classification and explainable route ranking.
 - `commands`: VS Code input flows and user-facing error boundary.
 
 ## Commands
@@ -30,4 +31,4 @@ Run `npm run check-types`, `npm run lint`, `npm test`, and `npm run compile` bef
 
 ## Out of scope
 
-Cloud/backend, accounts, billing, analytics, custom terminal output parsing, orchestration, MCP, Git worktrees, automatic branches/PRs/merges, and SDK/API integrations are not part of this MVP.
+Cloud/backend, accounts, billing, analytics, custom terminal output parsing, automatic multi-agent execution, parallel writes, MCP, Git worktrees, automatic branches/PRs/merges, and SDK/API integrations are not part of this MVP.
