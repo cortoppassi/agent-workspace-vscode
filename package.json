@@ -47,7 +47,8 @@
         {
           "id": "agentWorkspace.agents",
           "name": "Agents",
-          "icon": "$(hubot)"
+          "icon": "$(hubot)",
+          "when": "!agentWorkspace.economyModeActive"
         },
         {
           "id": "agentWorkspace.chat",
@@ -163,7 +164,7 @@
         },
         {
           "command": "agentWorkspace.disableEconomyMode",
-          "when": "agentWorkspace.hasCodexAgents && agentWorkspace.economyModeActive"
+          "when": "agentWorkspace.economyModeActive"
         }
       ],
       "view/title": [
@@ -174,7 +175,7 @@
         },
         {
           "command": "agentWorkspace.disableEconomyMode",
-          "when": "view == agentWorkspace.agents && agentWorkspace.hasCodexAgents && agentWorkspace.economyModeActive",
+          "when": "view == agentWorkspace.chat && agentWorkspace.economyModeActive",
           "group": "navigation@1"
         },
         {
