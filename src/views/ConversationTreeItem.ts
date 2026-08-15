@@ -17,7 +17,7 @@ export class ConversationTreeItem extends vscode.TreeItem {
       .filter(Boolean)
       .join(' · ') || undefined;
     this.tooltip = new vscode.MarkdownString(
-      `**${conversation.title}**\n\nUpdated: ${new Date(conversation.updatedAt).toLocaleString()}${conversation.dispatch ? `\n\nModo Economia: ${Math.round(conversation.dispatch.confidence * 100)}% confidence\n\n${conversation.dispatch.agentReason}\n\n${conversation.dispatch.modelReason}` : ''}${conversation.usage ? `\n\nToken usage: ${conversation.usage.totalTokens.toLocaleString()}` : ''}`,
+      `**${conversation.title}**\n\nUpdated: ${new Date(conversation.updatedAt).toLocaleString()}${conversation.dispatch ? `\n\nModo Economia: ${Math.round(conversation.dispatch.confidence * 100)}% de confiança declarada pela IA${conversation.dispatch.routerModel ? `\n\nModelo analisador: ${conversation.dispatch.routerModel}` : ''}\n\n${conversation.dispatch.agentReason}\n\n${conversation.dispatch.modelReason}` : ''}${conversation.usage ? `\n\nToken usage: ${conversation.usage.totalTokens.toLocaleString()}` : ''}`,
     );
     this.contextValue = 'conversation';
     this.iconPath = new vscode.ThemeIcon(

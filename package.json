@@ -1,7 +1,7 @@
 {
   "name": "agent-workspace",
   "displayName": "Agent Workspace",
-  "description": "Route coding tasks to specialized local agents with explainable model selection and token usage.",
+  "description": "Use AI to route coding tasks to specialized local agents with explainable cost-aware decisions.",
   "version": "0.1.0",
   "publisher": "local",
   "license": "MIT",

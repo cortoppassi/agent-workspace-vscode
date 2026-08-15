@@ -4,7 +4,7 @@ import type { AgentManager } from '../agents/AgentManager';
 import type { ChatSessionManager } from '../chat/ChatSessionManager';
 import type { AgentConfig } from '../config/types';
 import { UserFacingError } from '../config/validation';
-import { createDispatchRecord, recommendRoutes } from '../routing/TaskRouter';
+import { createDispatchRecord } from '../routing/TaskRouter';
 
 interface WebviewMessage {
   readonly type: 'send' | 'interrupt' | 'selectModel' | 'economyDispatch';
@@ -150,27 +150,24 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     if (eligibleAgents.length === 0) {
       throw new UserFacingError('O Modo Economia precisa de pelo menos um agente Codex.');
     }
-    const [models, profiles] = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Modo Economia: analisando a melhor rota' },
-      async () => Promise.all([
-        this.chats.getAvailableModels(),
-        Promise.all(eligibleAgents.map(async (agent) => ({
+    const route = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Modo Economia: a IA está analisando a melhor rota' },
+      async () => {
+        const profiles = await Promise.all(eligibleAgents.map(async (agent) => ({
           agent,
           instructions: await this.agents.readInstructions(agent),
-        }))),
-      ]),
+        })));
+        return this.chats.analyzeEconomyRoute(task, profiles);
+      },
     );
-    const route = recommendRoutes(task, profiles, models)[0];
-    if (!route) {
-      throw new UserFacingError('O Modo Economia não encontrou um agente disponível.');
-    }
     const modelName = route.model?.displayName ?? route.agent.model ?? 'seleção automática do Codex';
     const effort = route.reasoningEffort ? ` · reasoning ${route.reasoningEffort}` : '';
+    const router = route.routerModel ? `\n\nAnalisado pela IA com ${route.routerModel}.` : '';
     const decision = await vscode.window.showInformationMessage(
-      `Modo Economia escolheu ${route.agent.name} — ${modelName}${effort}`,
+      `A IA escolheu ${route.agent.name} — ${modelName}${effort}`,
       {
         modal: true,
-        detail: `${route.agentReason}\n\n${route.modelReason}\n\nConfiança: ${Math.round(route.confidence * 100)}%.`,
+        detail: `${route.agentReason}\n\n${route.modelReason}\n\nConfiança declarada pela IA: ${Math.round(route.confidence * 100)}%.${router}`,
       },
       'Executar',
     );
@@ -398,7 +395,7 @@ function renderHtml(): string {
         const title = document.createElement('strong');
         title.textContent = 'Modo Economia';
         const detail = document.createElement('span');
-        detail.textContent = 'Descreva a tarefa sem escolher um agente. A rota com melhor custo-benefício será selecionada automaticamente.';
+        detail.textContent = 'Descreva a tarefa sem escolher um agente. A IA analisará a intenção, a complexidade e o perfil completo de cada agente.';
         const hint = document.createElement('span');
         hint.textContent = 'A decisão será explicada antes da execução.';
         welcome.append(title, detail, hint);
@@ -409,7 +406,7 @@ function renderHtml(): string {
         send.disabled = economyBusy;
         send.textContent = economyBusy ? 'Analisando…' : 'Analisar e enviar';
         stop.style.display = 'none';
-        working.textContent = economyBusy ? 'Analisando tarefa e agentes…' : '';
+        working.textContent = economyBusy ? 'A IA está analisando tarefa e agentes…' : '';
         working.style.display = economyBusy ? 'inline' : 'none';
         shortcut.style.display = economyBusy ? 'none' : '';
         shortcut.textContent = 'Enter para enviar';
@@ -451,6 +448,7 @@ function renderHtml(): string {
         dispatchSummary.textContent = capitalize(conversation.dispatch.complexity) + ' task · ' + conversation.dispatch.agentReason;
         const routeChanged = conversation.dispatch.model && state.model && conversation.dispatch.model !== state.model;
         dispatchModelReason.textContent = conversation.dispatch.modelReason
+          + (conversation.dispatch.routerModel ? ' Analisado pela IA com ' + conversation.dispatch.routerModel + '.' : '')
           + (routeChanged ? ' The model was changed manually after routing.' : '');
         dispatch.title = 'Routed ' + new Date(conversation.dispatch.routedAt).toLocaleString();
       } else {

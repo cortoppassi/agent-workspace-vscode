@@ -84,8 +84,9 @@ void test('readStoredConversations preserves valid Modo Economia decisions', () 
     routedAt: 10,
     complexity: 'simple' as const,
     confidence: 0.8,
-    agentReason: 'Matched specialties: CSS.',
+    agentReason: 'A IA identificou que a tarefa exige experiência com CSS.',
     modelReason: 'Selected an economical model.',
+    routerModel: 'gpt-5.6-luna',
   };
   assert.deepEqual(
     readStoredConversations([{

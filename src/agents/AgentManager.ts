@@ -17,6 +17,10 @@ export class AgentManager implements vscode.Disposable {
 
   public constructor(private readonly configManager: ConfigManager) {}
 
+  public get workspaceRoot(): string {
+    return this.configManager.workspaceRoot;
+  }
+
   public dispose(): void {
     this.changedEmitter.dispose();
   }

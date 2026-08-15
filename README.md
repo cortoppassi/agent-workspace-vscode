@@ -2,18 +2,20 @@
 
 Agent Workspace is a local control plane for routing coding tasks to specialized CLI agents in one project. Each agent has its own specialties, instructions file, working directory, chat or terminal session, and persisted project configuration.
 
-The MVP supports the local Codex CLI and a generic Custom CLI escape hatch. **Modo Economia** accepts a task directly in the global chat, ranks Codex agents from their specialties, instructions, model, and reasoning configuration, explains the automatic choice, and waits for confirmation before starting. It runs entirely on the developer's machine and does not include telemetry, authentication, cloud services, or an OpenAI API integration.
+The MVP supports the local Codex CLI and a generic Custom CLI escape hatch. **Modo Economia** accepts a task directly in the global chat and asks an economical Codex model to choose between the configured agents from the user's intent, task complexity, complete agent instructions, specialties, model, and reasoning profile. It explains the AI decision and waits for confirmation before starting. The control plane uses the authenticated local Codex app-server and does not add telemetry, accounts, a backend, API keys, or a separate OpenAI API integration.
 
 ## Modo Economia
 
 Use the sparkle action in the **Agents** view to open the global economy chat. You do not select an agent first. Agent Workspace then:
 
-1. Reads the local profiles and instructions of available Codex agents.
-2. Ranks agents by specialty, task-domain, and cost-versus-capability matches.
-3. Classifies the task as simple, standard, or complex.
-4. Uses the model and reasoning effort configured on each agent, shared by all of that agent's conversations.
-5. Automatically chooses the strongest cost-effective route and explains it before any conversation is created.
+1. Reads the local profiles and complete instructions of available Codex agents.
+2. Sends the task and those profiles to an isolated, read-only Codex analysis turn with a strict JSON output schema.
+3. Lets the AI interpret the user's intent, classify complexity, and compare required capabilities with cost versus reliability.
+4. Validates locally that the returned agent exists and uses the model and reasoning effort configured on that agent.
+5. Explains which AI model made the routing decision before any conversation is created.
 6. Records the accepted decision in the conversation for later inspection.
+
+There is no keyword-scoring fallback. If the AI response is invalid or selects an unknown agent, the task is not dispatched and the user receives an error.
 
 This first control-plane increment routes one task to one confirmed agent. It does not yet run validation commands, automatically escalate failed work, or coordinate parallel writes.
 
