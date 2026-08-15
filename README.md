@@ -6,7 +6,7 @@ The MVP supports the local Codex CLI and a generic Custom CLI escape hatch. **Mo
 
 ## Modo Economia
 
-Use the sparkle action in the **Agents** view to open the global economy chat. You do not select an agent first. Agent Workspace then:
+Use the toggle action in the **Agents** view to enter or leave the global economy chat. Turning it off restores the previously selected conversation. You do not select an agent before submitting an economy task. Agent Workspace then:
 
 1. Reads the local profiles and complete instructions of available Codex agents.
 2. Sends the task and those profiles to an isolated, read-only Codex analysis turn with a strict JSON output schema.

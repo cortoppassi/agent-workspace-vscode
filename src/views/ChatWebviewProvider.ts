@@ -75,7 +75,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     const conversation = this.chats.selectConversation(agent.id, conversationId);
     this.selectedAgentId = agent.id;
     this.selectedConversationId = conversation.id;
-    this.economyModeActive = false;
+    await this.setEconomyModeState(false);
     this.view?.show(true);
     await vscode.commands.executeCommand(`${ChatWebviewProvider.viewType}.focus`);
     this.update();
@@ -89,10 +89,8 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
     await this.selectConversation(agent, this.selectedConversationId);
   }
 
-  public async openEconomyMode(): Promise<void> {
-    this.selectedAgentId = undefined;
-    this.selectedConversationId = undefined;
-    this.economyModeActive = true;
+  public async setEconomyMode(active: boolean): Promise<void> {
+    await this.setEconomyModeState(active);
     this.view?.show(true);
     await vscode.commands.executeCommand(`${ChatWebviewProvider.viewType}.focus`);
     this.update();
@@ -209,6 +207,11 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider, vscode.D
 
   private selectedAgent(): AgentConfig | undefined {
     return this.agents.list().find((agent) => agent.id === this.selectedAgentId);
+  }
+
+  private async setEconomyModeState(active: boolean): Promise<void> {
+    this.economyModeActive = active;
+    await vscode.commands.executeCommand('setContext', 'agentWorkspace.economyModeActive', active);
   }
 }
 

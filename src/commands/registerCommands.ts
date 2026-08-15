@@ -37,7 +37,8 @@ export function registerCommands(context: vscode.ExtensionContext, services: Com
 
   register('agentWorkspace.refresh', async () => agents.reload());
 
-  register('agentWorkspace.economyMode', async () => chatView.openEconomyMode());
+  register('agentWorkspace.enableEconomyMode', async () => chatView.setEconomyMode(true));
+  register('agentWorkspace.disableEconomyMode', async () => chatView.setEconomyMode(false));
 
   register('agentWorkspace.openChat', async (value) => {
     const agent = await resolveAgent(value, agents);
